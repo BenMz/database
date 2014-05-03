@@ -1,12 +1,13 @@
 
+import dbman.DB;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import org.antlr.v4.runtime.tree.ErrorNode;
-import org.antlr.v4.runtime.tree.ParseTree;
-import org.antlr.v4.runtime.tree.RuleNode;
-import org.antlr.v4.runtime.tree.TerminalNode;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
 
 /*
  * To change this license header, choose License Headers in Project Properties.
@@ -19,8 +20,12 @@ import org.antlr.v4.runtime.tree.TerminalNode;
  * @author Ben
  */
 public class Visitante extends
+        
         SQLBaseVisitor<Object>{
     String mensajes="";
+    DB workingDB = null;
+    HashMap<String, LinkedList> columns ; //se usa al momento de crear tabla
+    HashMap<String, LinkedList> constraints ; //se usa al momento de crear tabla
 
     @Override
     public Object visitExpression(SQLParser.ExpressionContext ctx) {
@@ -59,20 +64,25 @@ public class Visitante extends
 
     @Override
     public Object visitRenameDB(SQLParser.RenameDBContext ctx) {
-               File nuevo = new File("src/db/"+ctx.ID(1)); 
+        File nuevo = new File("src/db/"+ctx.ID(1)); 
         File viejo = new File("src/db/"+ctx.ID(0)); 
 
-       if(nuevo.exists())
+       if(nuevo.exists()){
            mensajes+="No puede renombrarlo. Ya existe una BD con el nombre de "+ctx.ID(1);
-       if(!viejo.exists())
+           return null;
+       }
+       if(!viejo.exists()){
            mensajes+="No existe la BD con el nombre de "+ctx.ID(0);
+           return null;
+           
+       }
       
-//       String[]entries = viejo.list();
-//        for(String s: entries){
-//            File currentFile = new File(viejo.getPath(),s);
-//            currentFile.delete();
-//        }
+
        viejo.renameTo(nuevo);
+        nuevo = new File("src/db/"+ctx.ID(1)+".json"); 
+        viejo = new File("src/db/"+ctx.ID(0)+".json"); 
+        viejo.renameTo(nuevo);
+        mensajes = "Se ha cambiado de nombre a "+ctx.ID(1);
        return null;
     }
 
@@ -98,7 +108,11 @@ public class Visitante extends
 
     @Override
     public Object visitType(SQLParser.TypeContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        
+        if(ctx.getChild(1).equals("(")){ //saber si es char
+            return "CHAR";
+        }
+        else return ctx.getText();
     }
 
     @Override
@@ -187,8 +201,10 @@ public class Visitante extends
     }
 
     @Override
-    public Object visitUseDB(SQLParser.UseDBContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+    public Object visitUseDB(SQLParser.UseDBContext ctx) {      
+        workingDB = new DB(ctx.ID().getText());
+        mensajes = "Usando la base de datos "+workingDB.getName();
+        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -214,7 +230,30 @@ public class Visitante extends
 
     @Override
     public Object visitCreateStm(SQLParser.CreateStmContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       columns = new HashMap ();
+       constraints = new HashMap ();
+      
+        visitChildren(ctx); 
+        
+       JSONObject newTable = new JSONObject();
+       newTable.put("name", ctx.ID().getText());
+       JSONArray columnas = new JSONArray();
+      
+       Iterator<String> keys = columns.keySet().iterator();
+        while (keys.hasNext()) {
+            
+            String key = keys.next();
+            LinkedList datos = columns.get(key);
+            JSONObject column = new JSONObject();
+            column.put("name", datos.get(0));
+            column.put("type", datos.get(1));
+            column.put("notNull", datos.get(2));
+            columnas.add(column);
+        }
+        newTable.put("columns", columnas);
+        workingDB.createTable(newTable);
+       
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -299,6 +338,9 @@ public class Visitante extends
             currentFile.delete();
         }
        f.delete();
+       f = new File("src/db/"+ctx.ID()+".json"); 
+       f.delete();
+       mensajes+="Se ha borrado la BD "+ctx.ID();
        return null;
     }
 
@@ -317,9 +359,24 @@ public class Visitante extends
         
        File f = new File("src/db/"+ctx.ID()); 
 
-       if(!f.mkdir())
-           mensajes+="Ya existe una base de datos con ese nombre";
-       
+       if(!f.mkdir()){
+           mensajes="Ya existe una base de datos con ese nombre";
+           return null;
+       }
+       JSONObject obj = new JSONObject();
+        JSONArray tablas = new JSONArray();
+        obj.put("tablas", tablas);
+	try {
+ 
+		FileWriter file = new FileWriter("src/db/"+ctx.ID()+".json");
+		file.write(obj.toJSONString());
+		file.close();
+ 
+	} catch (IOException e) {
+		e.printStackTrace();
+	}  
+
+       mensajes="Se ha creado la base de datos";
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -456,7 +513,35 @@ visitChildren(ctx);  return null;  //To change body of generated methods, choose
 
     @Override
     public Object visitFieldDef(SQLParser.FieldDefContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       //ver si no se ha creado la lista
+        
+        String name = ctx.ID(0).getText();
+        
+        if(columns.containsKey(name)){
+            mensajes = "Column "+name+" is already created";
+            return 1;
+        }
+        //Vamos a crear una lista de columnas [nombre,tipo,notNull]
+        LinkedList datos = new LinkedList();
+        datos.add(name); //nombre de tabla
+        
+        if(ctx.type().getChild(1)!=null){ //ver si es char
+            datos.add("CHAR");
+        }else
+            datos.add(ctx.type().getText()); 
+        
+        //si puede ser nulo o no
+        if (ctx.notNull!=null)
+            datos.add("true");
+        else
+            datos.add("false");
+        columns.put(name, datos);
+        
+      /*ver si hace referencia a otra tabla*/
+        if(ctx.ref!=null){
+           // TODO: verificacion de tipo y primary key
+        }
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override

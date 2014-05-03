@@ -1,0 +1,1 @@
+{"tablas":[{"name":"prueba","columns":[{"name":"d","notNull":"false","type":"DATE"},{"name":"b","notNull":"false","type":"FLOAT"},{"name":"c","notNull":"false","type":"CHAR"},{"name":"a","notNull":"false","type":"INT"}]}]}
