@@ -134,11 +134,11 @@ public class DMLManager {
             if(table_aliases.containsKey(table)){
                 table = table_aliases.get(table);
             }
-            result = this.currTables.get(table).getColumns().get(col);
+            result = (String) this.currTables.get(table).getColumns().get(col).get("name");
         }else {
             for(Map.Entry<String, MetaTable> currTs : currTables.entrySet()){
                 if(currTs.getValue().getColumns().containsKey(col)){
-                    result = currTs.getValue().getColumns().get(col);
+                    result = (String) currTs.getValue().getColumns().get(col).get("name");
                 }
             }
         }

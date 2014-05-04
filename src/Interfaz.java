@@ -1,4 +1,5 @@
 
+import dbman.DBObject;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
@@ -290,7 +291,7 @@ public static String createTree(String word){
         }
        Message= parser();
         System.out.println(Message);
-       String texto =(Message!=null)?Message:"BUILD SUCCESSFUL";
+       String texto =Message;
        resultText.setText(texto);
        codigoInt = "";
        Message=null;

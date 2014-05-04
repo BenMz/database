@@ -1,12 +1,14 @@
 
+import dbman.DB;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import org.antlr.v4.runtime.tree.ErrorNode;
-import org.antlr.v4.runtime.tree.ParseTree;
-import org.antlr.v4.runtime.tree.RuleNode;
-import org.antlr.v4.runtime.tree.TerminalNode;
+import java.util.EmptyStackException;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
 
 /*
  * To change this license header, choose License Headers in Project Properties.
@@ -19,8 +21,12 @@ import org.antlr.v4.runtime.tree.TerminalNode;
  * @author Ben
  */
 public class Visitante extends
+        
         SQLBaseVisitor<Object>{
     String mensajes="";
+    DB workingDB = null;
+    HashMap<String, LinkedList> columns ; //se usa al momento de crear tabla
+    HashMap<String, JSONObject> constraints ; //se usa al momento de crear tabla
 
     @Override
     public Object visitExpression(SQLParser.ExpressionContext ctx) {
@@ -59,20 +65,28 @@ public class Visitante extends
 
     @Override
     public Object visitRenameDB(SQLParser.RenameDBContext ctx) {
-               File nuevo = new File("src/db/"+ctx.ID(1)); 
+        File nuevo = new File("src/db/"+ctx.ID(1)); 
         File viejo = new File("src/db/"+ctx.ID(0)); 
 
-       if(nuevo.exists())
+       if(nuevo.exists()){
            mensajes+="No puede renombrarlo. Ya existe una BD con el nombre de "+ctx.ID(1);
-       if(!viejo.exists())
+           return -1;
+       }
+       if(!viejo.exists()){
            mensajes+="No existe la BD con el nombre de "+ctx.ID(0);
+           return -1;
+           
+       }
       
-//       String[]entries = viejo.list();
-//        for(String s: entries){
-//            File currentFile = new File(viejo.getPath(),s);
-//            currentFile.delete();
-//        }
+       //ver si no se encuentra en uso la base de datos
+       if(workingDB!=null && workingDB.getName().equals(ctx.ID(0))){
+           workingDB.setName(ctx.ID(0).getText());
+       }
        viejo.renameTo(nuevo);
+        nuevo = new File("src/db/"+ctx.ID(1)+".json"); 
+        viejo = new File("src/db/"+ctx.ID(0)+".json"); 
+        viejo.renameTo(nuevo);
+        mensajes = "Se ha cambiado de nombre a "+ctx.ID(1);
        return null;
     }
 
@@ -98,12 +112,55 @@ public class Visitante extends
 
     @Override
     public Object visitType(SQLParser.TypeContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        
+        if(ctx.getChild(1).equals("(")){ //saber si es char
+            return "CHAR";
+        }
+        else return ctx.getText();
     }
 
     @Override
     public Object visitAddCol(SQLParser.AddColContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       
+     //ver si no se ha creado la lista
+        
+        String table = ctx.ID(0).getText();
+        String colID = ctx.ID(1).getText();
+        
+        if(!workingDB.getTables().containsKey(table)){
+            mensajes = "Table "+table+" doesn't exist";
+            return -1;
+        }
+        if(workingDB.getTables().get(table).getColumns().containsKey(colID)){
+            mensajes = "Column "+colID+" already exists";
+            return -1;
+        }
+       
+        JSONObject datos = new JSONObject();
+        datos.put("name",colID);
+        
+        if(ctx.type().getChild(1)!=null){ //ver si es char
+            datos.put("type","CHAR");
+        }else
+            datos.put("type",ctx.type().getText());
+        
+        //si puede ser nulo o no
+        if (ctx.not!=null)
+            datos.put("notNull","true");
+        else
+            datos.put("notNull","false");
+        //si es char agregar tamano
+        if(datos.get("type").equals("CHAR"))
+            datos.put("size",Integer.parseInt(ctx.type().NUM().getText()));
+        
+        workingDB.addColumn(table,datos);
+      /*constraints*/
+        if(ctx.con!=null){
+           // TODO: verificacion de constraints
+        }
+        
+        mensajes = "Column "+colID+" added to table "+table;
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -143,7 +200,9 @@ public class Visitante extends
 
     @Override
     public Object visitSingleMember(SQLParser.SingleMemberContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       LinkedList lista = new LinkedList();
+       lista.add(ctx.idMember().getText()); //agregar el id;
+       return lista;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -157,8 +216,13 @@ public class Visitante extends
     }
 
     @Override
-    public Object visitDropCon(SQLParser.DropConContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+    public Object visitDropCon(SQLParser.DropConContext ctx)   {
+       if(!workingDB.existsConstrain(ctx.ID(1).getText())){
+           mensajes = "The constraint "+ctx.ID(1).getText()+" doesn't exist";
+           return -1;
+       }
+       workingDB.dropConstraint(ctx.ID(0).getText(),ctx.ID(1).getText());
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -173,7 +237,21 @@ public class Visitante extends
 
     @Override
     public Object visitDropCol(SQLParser.DropColContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        if(!workingDB.getTables().containsKey(ctx.ID(0).getText())){
+            mensajes = "Table "+ctx.ID(0).getText()+" doesn't exist";
+            return -1;
+        }
+        //ver que no haya un constraint usando la columna
+        String result = workingDB.usingCol(ctx.ID(0).getText(), ctx.ID(1).getText());
+        if(result!=null){
+            mensajes = "Constraint "+result+" references column "+ ctx.ID(1).getText();
+            return -1;           
+        }
+        // TODO ver que no haga referencia desde otra tabla
+        
+        workingDB.dropColumn(ctx.ID(0).getText(),ctx.ID(1).getText());
+        mensajes = "Column "+ctx.ID(1).getText()+" from table "+ctx.ID(0).getText()+" has been deleted.";
+        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -187,8 +265,10 @@ public class Visitante extends
     }
 
     @Override
-    public Object visitUseDB(SQLParser.UseDBContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+    public Object visitUseDB(SQLParser.UseDBContext ctx) {      
+        workingDB = new DB(ctx.ID().getText());
+        mensajes = "Usando la base de datos "+workingDB.getName();
+        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -214,7 +294,46 @@ public class Visitante extends
 
     @Override
     public Object visitCreateStm(SQLParser.CreateStmContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       columns = new HashMap ();
+       constraints = new HashMap ();
+     if(workingDB.getTables().containsKey(ctx.ID().getText())){
+         mensajes = "Table "+ctx.ID().getText()+" already exists";
+         return -1;
+     }
+        visitChildren(ctx); 
+        
+       JSONObject newTable = new JSONObject();
+       newTable.put("name", ctx.ID().getText());
+       JSONArray columnas = new JSONArray();
+      
+       Iterator<String> keys = columns.keySet().iterator();
+        while (keys.hasNext()) {
+            
+            String key = keys.next();
+            LinkedList datos = columns.get(key);
+            JSONObject column = new JSONObject();
+            column.put("name", datos.get(0));
+            column.put("type", datos.get(1));
+            column.put("notNull", datos.get(2));
+            if(datos.get(1).equals("CHAR"))
+                column.put("size",datos.get(3));
+            columnas.add(column);
+        }
+        newTable.put("columns", columnas);
+        long records = 0;
+        newTable.put("records", records);
+        
+        //constraints
+        
+        keys = constraints.keySet().iterator();
+        JSONArray arrayConstraints = new JSONArray();
+        while(keys.hasNext())
+            arrayConstraints.add(constraints.get(keys.next()));
+        
+        
+        workingDB.createTable(newTable,arrayConstraints);
+       
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -265,7 +384,13 @@ public class Visitante extends
 
     @Override
     public Object visitMulMember(SQLParser.MulMemberContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       LinkedList lista = new LinkedList();
+       lista.add(ctx.idMember().getText()); //agregar el id;
+       LinkedList result = (LinkedList) visit(ctx.idList());
+       Iterator it = result.iterator();
+       while(it.hasNext())
+           lista.add(it.next());
+       return lista;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -275,7 +400,13 @@ public class Visitante extends
 
     @Override
     public Object visitDropStm(SQLParser.DropStmContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        if(!workingDB.getTables().containsKey(ctx.ID().getText())){
+            mensajes = "Table "+ctx.ID().getText()+" doesn't exist";
+            return -1;
+        }
+        // TODO ver constraints si no hay referencias
+        workingDB.dropTable(ctx.ID().getText());
+        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -288,8 +419,15 @@ public class Visitante extends
        
         File f = new File("src/db/"+ctx.ID()); 
 
-       if(!f.exists())
-           mensajes+="No existe la BD "+ctx.ID();
+       if(!f.exists()){
+           mensajes="No existe la BD "+ctx.ID();
+           return -1;
+       }
+       
+       //ver si no se esta usando
+       if(workingDB.getName().equals(ctx.ID().getText())){
+           mensajes = "La BD "+ctx.ID().getText()+" se esta usando";
+       }
       // TODO: Hay que hacer el prompt si esta seguro de borrarlo 
        
        String[]entries = f.list();
@@ -299,6 +437,9 @@ public class Visitante extends
             currentFile.delete();
         }
        f.delete();
+       f = new File("src/db/"+ctx.ID()+".json"); 
+       f.delete();
+       mensajes+="Se ha borrado la BD "+ctx.ID();
        return null;
     }
 
@@ -317,9 +458,25 @@ public class Visitante extends
         
        File f = new File("src/db/"+ctx.ID()); 
 
-       if(!f.mkdir())
-           mensajes+="Ya existe una base de datos con ese nombre";
-       
+       if(!f.mkdir()){
+           mensajes="Ya existe una base de datos con ese nombre";
+           return -1;
+       }
+       JSONObject obj = new JSONObject();
+        obj.put("tablas",  new JSONArray());
+        obj.put("constraints",  new JSONObject());
+        obj.put("records", 0);
+	try {
+ 
+		FileWriter file = new FileWriter("src/db/"+ctx.ID()+".json");
+		file.write(obj.toJSONString());
+		file.close();
+ 
+	} catch (IOException e) {
+		e.printStackTrace();
+	}  
+
+       mensajes="Se ha creado la base de datos";
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -340,7 +497,18 @@ public class Visitante extends
 
     @Override
     public Object visitConstraint(SQLParser.ConstraintContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       String id = ctx.ID().getText();
+       if(workingDB.existsConstrain(id)){
+           mensajes = "The relation "+id+" already exists";
+           return -1;
+       }
+
+       JSONObject constraint = (JSONObject) visit(ctx.getChild(2)); //child 2 = constraintType
+       
+       constraints.put(id, constraint);
+       
+       
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -360,8 +528,18 @@ public class Visitante extends
 
     @Override
     public Object visitRenameTbl(SQLParser.RenameTblContext ctx) {
-       
-visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       String newID = ctx.ID(1).getText();
+       String oldID = ctx.ID(0).getText();
+       if(workingDB.getTables().containsKey(newID)){
+           mensajes = "Table "+newID+" already exists.";
+           return -1;
+       }
+       if(!workingDB.getTables().containsKey(oldID)){
+           mensajes = "Table "+newID+" doesn't exists.";
+           return -1;
+       }
+       workingDB.renameTable(oldID,newID);
+        return null;  
     }
 
     @Override
@@ -401,7 +579,23 @@ visitChildren(ctx);  return null;  //To change body of generated methods, choose
 
     @Override
     public Object visitPKey(SQLParser.PKeyContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       String id = ctx.getParent().getChild(1).getText();//agarra el id del padre, que es Constraint
+       if(constraints.containsKey(id)){
+           mensajes = "The relation "+id+" was already created";
+          return -1;
+       }
+       
+       LinkedList lista = (LinkedList) visit(ctx.idList());
+       Iterator it = lista.iterator();
+       JSONArray arrayConstraints = new JSONArray();
+       JSONObject obj = new JSONObject();
+       while(it.hasNext())
+           arrayConstraints.add(it.next());
+       obj.put("columns",arrayConstraints);
+       obj.put("name", id);
+       obj.put("type", "primary");
+       
+       return obj;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -456,7 +650,39 @@ visitChildren(ctx);  return null;  //To change body of generated methods, choose
 
     @Override
     public Object visitFieldDef(SQLParser.FieldDefContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       //ver si no se ha creado la lista
+        
+        String name = ctx.ID(0).getText();
+        
+        if(columns.containsKey(name)){
+            mensajes = "Column "+name+" is already created";
+            return -1;
+        }
+        //Vamos a crear una lista de columnas [nombre,tipo,notNull]
+        LinkedList datos = new LinkedList();
+        datos.add(name); //nombre de columna
+        
+        if(ctx.type().getChild(1)!=null){ //ver si es char
+            datos.add("CHAR");
+        }else
+            datos.add(ctx.type().getText()); 
+        
+        //si puede ser nulo o no
+        if (ctx.notNull!=null)
+            datos.add("true");
+        else
+            datos.add("false");
+        //si es char agregar tamano
+        if(datos.get(1).equals("CHAR"))
+            datos.add(Integer.parseInt(ctx.type().NUM().getText()));
+       
+        columns.put(name, datos);
+        
+      /*ver si hace referencia a otra tabla*/
+        if(ctx.ref!=null){
+           // TODO: verificacion de tipo y primary key
+        }
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override

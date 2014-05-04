@@ -1,1 +1,1 @@
-DROP DATABASE gatito
+ALTER TABLE test DROP COLUMN prueba3
