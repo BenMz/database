@@ -1,1 +1,2 @@
-
+USE DATABASE test;
+DROP TABLE prueba2

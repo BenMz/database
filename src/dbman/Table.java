@@ -9,6 +9,7 @@ package dbman;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.json.simple.JSONObject;
 
 /**
  *
@@ -16,15 +17,17 @@ import java.util.Map;
  */
 public class Table implements MetaTable {
     private String name;
-    private HashMap<String, String> columns ;
+    private HashMap<String,JSONObject> columns ; //JSONObject es un HashMap, puede tratarse como tal. El string es el nombre
+    private JSONObject meta;
     private String database;
     
     public Table (String name,String database){
         this.name=name;
         this.database = database;
+        
     }
     
-    public void setColumns(HashMap<String, String> columns){
+    public void setColumns(HashMap<String, JSONObject> columns){
         this.columns = columns;
     }
     
@@ -34,7 +37,7 @@ public class Table implements MetaTable {
     }
 
     @Override
-    public Map<String, String> getColumns() {
+    public Map<String, JSONObject> getColumns() {
        return columns; //To change body of generated methods, choose Tools | Templates.
     }
 

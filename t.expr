@@ -1,6 +1,1 @@
-USE DATABASE test;
-CREATE TABLE prueba (
-	a INT,
-	b FLOAT,
-	c CHAR(255),
-	d DATE)
+DROP TABLE prueba2

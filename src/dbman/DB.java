@@ -25,7 +25,7 @@ import org.json.simple.parser.ParseException;
  * @author Ben
  */
 public class DB implements DBObject {
-    private HashMap<String,MetaTable> tables;
+    private HashMap<String,MetaTable> tables = new HashMap();
     JSONObject jsonObject ;
     String name;
     
@@ -46,48 +46,97 @@ public class DB implements DBObject {
         JSONArray msg = (JSONArray) jsonObject.get("tablas");
         
         Iterator<JSONObject> iterator = msg.iterator();
+        
         while (iterator.hasNext()) {
+           
             JSONObject tabla = iterator.next();
             Table meta = new Table((String) tabla.get("name"),name); 
             JSONArray columnas = (JSONArray) tabla.get("columns");
             Iterator<JSONObject> iterator2 = columnas.iterator();
-            
-            while (iterator2.hasNext()) {
+             HashMap<String, JSONObject> columns = new HashMap();
+            while (iterator2.hasNext()) { 
                 JSONObject columna = iterator2.next();
-                HashMap<String, String> columns = new HashMap();
-                columns.put("name", (String) columna.get("name"));
-                columns.put("type", (String) columna.get("type"));
-                columns.put("notNull", (String) columna.get("notNull"));
-                
+                columns.put((String) columna.get("name"),columna);
             }
-            
-            meta.setColumns(tabla);
+            meta.setColumns(columns);
             tables.put(meta.getName(), meta);
         }
+        
     }
     
     @Override
     public Map<String, MetaTable> getTables() {
         return tables; //To change body of generated methods, choose Tools | Templates.
     }
+    
+    
     public void createTable(JSONObject table){
-        JSONParser parser = new JSONParser();
-        
-        try {         
-            JSONObject obj = (JSONObject) parser.parse(new FileReader("src/db/"+name+".json"));
-            JSONArray array = (JSONArray) obj.get("tablas");
+        JSONObject obj = readFile();
+        JSONArray array = (JSONArray) obj.get("tablas");
             array.add(table);
             obj.put("tablas", array);
-            FileWriter file = new FileWriter("src/db/"+name+".json");
-            file.write(obj.toJSONString());
-            file.close();
+            writeFile("src/db/"+name+".json", obj.toJSONString());
+            //agregarlo a la variable
+            Table meta = new Table((String) table.get("name"),name); 
             
-        } catch (FileNotFoundException ex) {
-            Logger.getLogger(DB.class.getName()).log(Level.SEVERE, null, ex);
+            JSONArray columnas = (JSONArray) table.get("columns");
+            Iterator<JSONObject> iterator = columnas.iterator();
+            HashMap<String, JSONObject> columns = new HashMap();
+            while (iterator.hasNext()) { 
+                JSONObject columna = iterator.next();
+                columns.put((String) columna.get("name"),columna);
+            }
+            meta.setColumns(columns);
+            tables.put(meta.getName(), meta);   
+            
+ 
+    }
+    
+    public void dropTable(String table){
+        JSONObject obj = readFile();
+        JSONArray array = (JSONArray) obj.get("tablas");
+        JSONArray nuevo = new JSONArray();
+        Iterator<JSONObject> iterator = array.iterator();
+        while (iterator.hasNext()) {
+            JSONObject tabla = iterator.next();
+            if(!tabla.get("name").equals(table))
+                nuevo.add(tabla);
+        }      
+        obj.put("tablas", nuevo);
+        writeFile("src/db/"+name+".json", obj.toJSONString());
+       //quitarlo de la variable
+        tables.remove(table);
+    }
+    
+    public JSONObject readFile(){
+        JSONParser parser = new JSONParser();
+       
+        try {
+            JSONObject obj = (JSONObject) parser.parse(new FileReader("src/db/"+name+".json"));
+            return obj;
         } catch (IOException ex) {
             Logger.getLogger(DB.class.getName()).log(Level.SEVERE, null, ex);
         } catch (ParseException ex) {
             Logger.getLogger(DB.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return null;   
+        
+    }
+    
+    public void writeFile(String path,String text){
+      FileWriter file = null;
+        try {
+            file = new FileWriter(path);      
+            file.write(text);
+            file.close();
+        } catch (IOException ex) {
+            Logger.getLogger(DB.class.getName()).log(Level.SEVERE, null, ex);
+        } finally {
+            try {
+                file.close();
+            } catch (IOException ex) {
+                Logger.getLogger(DB.class.getName()).log(Level.SEVERE, null, ex);
+            }
         }
     }
     

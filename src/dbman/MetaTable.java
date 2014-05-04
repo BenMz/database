@@ -8,6 +8,7 @@ package dbman;
 
 import java.util.List;
 import java.util.Map;
+import org.json.simple.JSONObject;
 
 /**
  *
@@ -15,7 +16,7 @@ import java.util.Map;
  */
 public interface MetaTable {
     public String getName();
-    public Map<String, String> getColumns();
+    public Map<String, JSONObject> getColumns();
     public List<String> getPK();
     public String physicalLocation();
 }

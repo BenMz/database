@@ -69,11 +69,11 @@ public class Visitante extends
 
        if(nuevo.exists()){
            mensajes+="No puede renombrarlo. Ya existe una BD con el nombre de "+ctx.ID(1);
-           return null;
+           return -1;
        }
        if(!viejo.exists()){
            mensajes+="No existe la BD con el nombre de "+ctx.ID(0);
-           return null;
+           return -1;
            
        }
       
@@ -232,7 +232,10 @@ public class Visitante extends
     public Object visitCreateStm(SQLParser.CreateStmContext ctx) {
        columns = new HashMap ();
        constraints = new HashMap ();
-      
+     if(workingDB.getTables().containsKey(ctx.ID().getText())){
+         mensajes = "Table "+ctx.ID().getText()+" already exists";
+         return -1;
+     }
         visitChildren(ctx); 
         
        JSONObject newTable = new JSONObject();
@@ -248,6 +251,8 @@ public class Visitante extends
             column.put("name", datos.get(0));
             column.put("type", datos.get(1));
             column.put("notNull", datos.get(2));
+            if(datos.get(1).equals("CHAR"))
+                column.put("size",datos.get(3));
             columnas.add(column);
         }
         newTable.put("columns", columnas);
@@ -314,7 +319,12 @@ public class Visitante extends
 
     @Override
     public Object visitDropStm(SQLParser.DropStmContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        if(!workingDB.getTables().containsKey(ctx.ID().getText())){
+            mensajes = "Table "+ctx.ID().getText()+" doesn't exist";
+            return -1;
+        }
+        workingDB.dropTable(ctx.ID().getText());
+        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -327,8 +337,10 @@ public class Visitante extends
        
         File f = new File("src/db/"+ctx.ID()); 
 
-       if(!f.exists())
+       if(!f.exists()){
            mensajes+="No existe la BD "+ctx.ID();
+           return -1;
+       }
       // TODO: Hay que hacer el prompt si esta seguro de borrarlo 
        
        String[]entries = f.list();
@@ -361,7 +373,7 @@ public class Visitante extends
 
        if(!f.mkdir()){
            mensajes="Ya existe una base de datos con ese nombre";
-           return null;
+           return -1;
        }
        JSONObject obj = new JSONObject();
         JSONArray tablas = new JSONArray();
@@ -519,7 +531,7 @@ visitChildren(ctx);  return null;  //To change body of generated methods, choose
         
         if(columns.containsKey(name)){
             mensajes = "Column "+name+" is already created";
-            return 1;
+            return -1;
         }
         //Vamos a crear una lista de columnas [nombre,tipo,notNull]
         LinkedList datos = new LinkedList();
@@ -535,6 +547,10 @@ visitChildren(ctx);  return null;  //To change body of generated methods, choose
             datos.add("true");
         else
             datos.add("false");
+        //si es char agregar tamano
+        if(datos.get(1).equals("CHAR"))
+            datos.add(Integer.parseInt(ctx.type().NUM().getText()));
+       
         columns.put(name, datos);
         
       /*ver si hace referencia a otra tabla*/
