@@ -187,7 +187,8 @@ public class Visitante extends
 
     @Override
     public Object visitDropCol(SQLParser.DropColContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       visitChildren(ctx);  
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -429,8 +430,18 @@ public class Visitante extends
 
     @Override
     public Object visitRenameTbl(SQLParser.RenameTblContext ctx) {
-       
-visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       String newID = ctx.ID(1).getText();
+       String oldID = ctx.ID(0).getText();
+       if(workingDB.getTables().containsKey(newID)){
+           mensajes = "Table "+newID+" already exists.";
+           return -1;
+       }
+       if(!workingDB.getTables().containsKey(oldID)){
+           mensajes = "Table "+newID+" doesn't exists.";
+           return -1;
+       }
+       workingDB.renameTable(oldID,newID);
+        return null;  
     }
 
     @Override

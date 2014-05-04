@@ -1,2 +1,2 @@
 USE DATABASE test;
-DROP TABLE prueba2
+ALTER TABLE testo RENAME TO prueba

@@ -108,6 +108,24 @@ public class DB implements DBObject {
         tables.remove(table);
     }
     
+    public void renameTable(String oldID,String newID){
+        JSONObject obj = readFile();
+        JSONArray array = (JSONArray) obj.get("tablas");
+        Iterator<JSONObject> iterator = array.iterator();
+        while (iterator.hasNext()) {
+            JSONObject tabla = iterator.next();
+            if(tabla.get("name").equals(oldID))   {
+                tabla.put("name", newID);
+                Table meta = (Table) tables.get(oldID);
+                meta.setName(newID);
+                tables.put(newID,meta);
+                break;
+            }
+        }
+        writeFile("src/db/"+name+".json", obj.toJSONString());
+        tables.remove(oldID);
+    }
+    
     public JSONObject readFile(){
         JSONParser parser = new JSONParser();
        

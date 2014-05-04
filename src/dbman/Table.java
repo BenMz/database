@@ -30,6 +30,10 @@ public class Table implements MetaTable {
     public void setColumns(HashMap<String, JSONObject> columns){
         this.columns = columns;
     }
+
+    public void setName(String name){
+        this.name = name;
+    }
     
     @Override
     public String getName() {
