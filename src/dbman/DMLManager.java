@@ -243,13 +243,12 @@ public class DMLManager {
             while( (rowMap = mapReader.read(header, processors)) != null ) {
                     System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
                             mapReader.getRowNumber(), rowMap));
-                    
-                    mapWriter.write(rowMap, header, processors);
-                    System.out.println(this.mapVals(validation, rowMap));
-                    
-                    HashMap<String, Map<String,Object>> canonical = new HashMap<>();
-                    canonical.put(currTable.getName(), rowMap);
-                    evalWhere(validation, canonical);
+                    Map<String, Map<String, Object>> data = new HashMap<>();
+                    data.put(currTable.getName(), rowMap);
+                    if(!this.evalWhere(validation, data)){
+                        mapWriter.write(rowMap, header, processors);
+                        System.out.println(this.mapVals(validation, rowMap));
+                    }
             }
             mapWriter.close();
             mapReader.close();
@@ -331,7 +330,7 @@ public class DMLManager {
         
         try {
             //dbm.insert(cols, vals);
-            dbm.delete("{a} == 'hola' && {b} > 0 ");
+            dbm.delete("{a} < 3");
         } catch (ConstrainException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
