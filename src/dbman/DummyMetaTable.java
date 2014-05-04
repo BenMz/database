@@ -9,6 +9,7 @@ package dbman;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.json.simple.JSONObject;
 
 /**
  * DummyMetaTable
@@ -33,8 +34,9 @@ public class DummyMetaTable implements MetaTable {
     }
 
     @Override
-    public Map<String, String> getColumns() {
-        return columns;
+    public Map<String, JSONObject> getColumns() {
+        //return columns
+        return null;
     }
 
     @Override

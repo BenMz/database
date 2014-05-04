@@ -10,7 +10,6 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -159,11 +158,6 @@ public class DMLManager {
         }
     }
     
-    private List<String> coordinateHeaders(String table, List<String> reqheaders){
-        //TOOD: implement
-        return null;
-        
-    }
     private MetaTable getCurrentTable(){
         //Get current table
         MetaTable currTable = null;
@@ -184,9 +178,20 @@ public class DMLManager {
         if(this.currTables.size() != 1){
             throw new ConstrainException("Invalid working table: "+this.currTables.keySet());
         }else {
-            if(columns.size() != values.size()){
+            if(columns !=null && columns.size() != values.size()){
                 throw new ConstrainException("Mismatch in number of columns and values: ("+columns+")  "+values);
             }else {
+                MetaTable currTable = this.getCurrentTable();
+                //Locate phycial file
+                String fileURL = currTable.physicalLocation();
+                String [] header = currTable.getColumns().keySet().toArray(new String[currTable.getColumns().keySet().size()]);
+                
+                if(columns == null){
+                    columns = new LinkedList<>();
+                    for(int i = 0; i<values.size(); i ++ ){
+                        columns.add(header[i]);
+                    }
+                }
                 //Prepare to store in CSV
                 Map<String, String> newRow = new LinkedHashMap<>();
                 for(int i = 0; i<columns.size(); i++){
@@ -195,13 +200,6 @@ public class DMLManager {
                 
                 ICsvMapWriter mapWriter = null;
                 try {
-                        //Locate phycial file
-                        String fileURL = "";
-                        String [] header = null;
-                        for(MetaTable table : this.currTables.values()){
-                            fileURL = table.physicalLocation();
-                            header = table.getColumns().keySet().toArray(new String[table.getColumns().keySet().size()]);
-                        }
                         
                         //Prepare for writing
                         mapWriter = new CsvMapWriter(new FileWriter(fileURL, true),
