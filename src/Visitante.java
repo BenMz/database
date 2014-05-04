@@ -3,6 +3,7 @@ import dbman.DB;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.EmptyStackException;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -25,7 +26,7 @@ public class Visitante extends
     String mensajes="";
     DB workingDB = null;
     HashMap<String, LinkedList> columns ; //se usa al momento de crear tabla
-    HashMap<String, LinkedList> constraints ; //se usa al momento de crear tabla
+    HashMap<String, JSONObject> constraints ; //se usa al momento de crear tabla
 
     @Override
     public Object visitExpression(SQLParser.ExpressionContext ctx) {
@@ -77,7 +78,10 @@ public class Visitante extends
            
        }
       
-
+       //ver si no se encuentra en uso la base de datos
+       if(workingDB!=null && workingDB.getName().equals(ctx.ID(0))){
+           workingDB.setName(ctx.ID(0).getText());
+       }
        viejo.renameTo(nuevo);
         nuevo = new File("src/db/"+ctx.ID(1)+".json"); 
         viejo = new File("src/db/"+ctx.ID(0)+".json"); 
@@ -196,7 +200,9 @@ public class Visitante extends
 
     @Override
     public Object visitSingleMember(SQLParser.SingleMemberContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       LinkedList lista = new LinkedList();
+       lista.add(ctx.idMember().getText()); //agregar el id;
+       return lista;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -210,8 +216,13 @@ public class Visitante extends
     }
 
     @Override
-    public Object visitDropCon(SQLParser.DropConContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+    public Object visitDropCon(SQLParser.DropConContext ctx)   {
+       if(!workingDB.existsConstrain(ctx.ID(1).getText())){
+           mensajes = "The constraint "+ctx.ID(1).getText()+" doesn't exist";
+           return -1;
+       }
+       workingDB.dropConstraint(ctx.ID(0).getText(),ctx.ID(1).getText());
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -230,6 +241,14 @@ public class Visitante extends
             mensajes = "Table "+ctx.ID(0).getText()+" doesn't exist";
             return -1;
         }
+        //ver que no haya un constraint usando la columna
+        String result = workingDB.usingCol(ctx.ID(0).getText(), ctx.ID(1).getText());
+        if(result!=null){
+            mensajes = "Constraint "+result+" references column "+ ctx.ID(1).getText();
+            return -1;           
+        }
+        // TODO ver que no haga referencia desde otra tabla
+        
         workingDB.dropColumn(ctx.ID(0).getText(),ctx.ID(1).getText());
         mensajes = "Column "+ctx.ID(1).getText()+" from table "+ctx.ID(0).getText()+" has been deleted.";
         return null;  //To change body of generated methods, choose Tools | Templates.
@@ -301,7 +320,18 @@ public class Visitante extends
             columnas.add(column);
         }
         newTable.put("columns", columnas);
-        workingDB.createTable(newTable);
+        long records = 0;
+        newTable.put("records", records);
+        
+        //constraints
+        
+        keys = constraints.keySet().iterator();
+        JSONArray arrayConstraints = new JSONArray();
+        while(keys.hasNext())
+            arrayConstraints.add(constraints.get(keys.next()));
+        
+        
+        workingDB.createTable(newTable,arrayConstraints);
        
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
@@ -354,7 +384,13 @@ public class Visitante extends
 
     @Override
     public Object visitMulMember(SQLParser.MulMemberContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       LinkedList lista = new LinkedList();
+       lista.add(ctx.idMember().getText()); //agregar el id;
+       LinkedList result = (LinkedList) visit(ctx.idList());
+       Iterator it = result.iterator();
+       while(it.hasNext())
+           lista.add(it.next());
+       return lista;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -368,6 +404,7 @@ public class Visitante extends
             mensajes = "Table "+ctx.ID().getText()+" doesn't exist";
             return -1;
         }
+        // TODO ver constraints si no hay referencias
         workingDB.dropTable(ctx.ID().getText());
         return null;  //To change body of generated methods, choose Tools | Templates.
     }
@@ -383,8 +420,13 @@ public class Visitante extends
         File f = new File("src/db/"+ctx.ID()); 
 
        if(!f.exists()){
-           mensajes+="No existe la BD "+ctx.ID();
+           mensajes="No existe la BD "+ctx.ID();
            return -1;
+       }
+       
+       //ver si no se esta usando
+       if(workingDB.getName().equals(ctx.ID().getText())){
+           mensajes = "La BD "+ctx.ID().getText()+" se esta usando";
        }
       // TODO: Hay que hacer el prompt si esta seguro de borrarlo 
        
@@ -421,8 +463,9 @@ public class Visitante extends
            return -1;
        }
        JSONObject obj = new JSONObject();
-        JSONArray tablas = new JSONArray();
-        obj.put("tablas", tablas);
+        obj.put("tablas",  new JSONArray());
+        obj.put("constraints",  new JSONObject());
+        obj.put("records", 0);
 	try {
  
 		FileWriter file = new FileWriter("src/db/"+ctx.ID()+".json");
@@ -454,7 +497,18 @@ public class Visitante extends
 
     @Override
     public Object visitConstraint(SQLParser.ConstraintContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       String id = ctx.ID().getText();
+       if(workingDB.existsConstrain(id)){
+           mensajes = "The relation "+id+" already exists";
+           return -1;
+       }
+
+       JSONObject constraint = (JSONObject) visit(ctx.getChild(2)); //child 2 = constraintType
+       
+       constraints.put(id, constraint);
+       
+       
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -525,7 +579,23 @@ public class Visitante extends
 
     @Override
     public Object visitPKey(SQLParser.PKeyContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       String id = ctx.getParent().getChild(1).getText();//agarra el id del padre, que es Constraint
+       if(constraints.containsKey(id)){
+           mensajes = "The relation "+id+" was already created";
+          return -1;
+       }
+       
+       LinkedList lista = (LinkedList) visit(ctx.idList());
+       Iterator it = lista.iterator();
+       JSONArray arrayConstraints = new JSONArray();
+       JSONObject obj = new JSONObject();
+       while(it.hasNext())
+           arrayConstraints.add(it.next());
+       obj.put("columns",arrayConstraints);
+       obj.put("name", id);
+       obj.put("type", "primary");
+       
+       return obj;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override

@@ -6,12 +6,12 @@
 
 package dbman;
 
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -26,8 +26,10 @@ import org.json.simple.parser.ParseException;
  */
 public class DB implements DBObject {
     private HashMap<String,MetaTable> tables = new HashMap();
+    private HashMap<String,LinkedList<JSONObject>> constraints = new HashMap(); ; 
     JSONObject jsonObject ;
     String name;
+    long records;
     
     
     public DB(String id){
@@ -43,6 +45,7 @@ public class DB implements DBObject {
         }
         
         /*llenar las tablas*/
+        this.records = (long) jsonObject.get("records");
         JSONArray msg = (JSONArray) jsonObject.get("tablas");
         
         Iterator<JSONObject> iterator = msg.iterator();
@@ -50,7 +53,7 @@ public class DB implements DBObject {
         while (iterator.hasNext()) {
            
             JSONObject tabla = iterator.next();
-            Table meta = new Table((String) tabla.get("name"),name); 
+            Table meta = new Table((String) tabla.get("name"),name, (long) tabla.get("records")); 
             JSONArray columnas = (JSONArray) tabla.get("columns");
             Iterator<JSONObject> iterator2 = columnas.iterator();
              HashMap<String, JSONObject> columns = new HashMap();
@@ -62,6 +65,17 @@ public class DB implements DBObject {
             tables.put(meta.getName(), meta);
         }
         
+        //llenar los constraints
+        JSONObject allConstraints = (JSONObject) jsonObject.get("constraints");
+        Iterator<String> it = allConstraints.keySet().iterator();
+        while(it.hasNext()){
+            JSONObject constraint = (JSONObject) allConstraints.get(it.next());
+            if(!constraints.containsKey(constraint.get("table")))
+                constraints.put((String) constraint.get("table"), new LinkedList());
+            constraints.get(constraint.get("table")).add(constraint);
+        }
+            
+        
     }
     
     @Override
@@ -70,24 +84,38 @@ public class DB implements DBObject {
     }
     
     
-    public void createTable(JSONObject table){
+    public void createTable(JSONObject table,JSONArray arrayConstraints){
         JSONObject obj = readFile();
         JSONArray array = (JSONArray) obj.get("tablas");
-            array.add(table);
-            obj.put("tablas", array);
-            writeFile("src/db/"+name+".json", obj.toJSONString());
-            //agregarlo a la variable
-            Table meta = new Table((String) table.get("name"),name); 
-            
-            JSONArray columnas = (JSONArray) table.get("columns");
-            Iterator<JSONObject> iterator = columnas.iterator();
-            HashMap<String, JSONObject> columns = new HashMap();
-            while (iterator.hasNext()) { 
-                JSONObject columna = iterator.next();
-                columns.put((String) columna.get("name"),columna);
-            }
-            meta.setColumns(columns);
-            tables.put(meta.getName(), meta);   
+        array.add(table);
+        obj.put("tablas", array);
+        //constraints
+        JSONObject fileConstraints = (JSONObject) obj.get("constraints");
+        LinkedList<JSONObject> constraints = new LinkedList();
+        Iterator<JSONObject> it = arrayConstraints.iterator();
+        while(it.hasNext()){
+            JSONObject constraint = it.next();
+            constraint.put("table", table.get("name"));
+            constraints.add(constraint);
+            fileConstraints.put(constraint.get("name"), constraint); 
+        }
+        obj.put("constraints", fileConstraints);
+        this.constraints.put((String) table.get("name"),constraints);
+        writeFile("src/db/"+name+".json", obj.toJSONString());
+        //agregarlo a la variable
+        Table meta = new Table((String) table.get("name"),name, (long) table.get("records")); 
+
+        JSONArray columnas = (JSONArray) table.get("columns");
+        Iterator<JSONObject> iterator = columnas.iterator();
+        HashMap<String, JSONObject> columns = new HashMap();
+        while (iterator.hasNext()) { 
+            JSONObject columna = iterator.next();
+            columns.put((String) columna.get("name"),columna);
+        }
+
+        
+        meta.setColumns(columns);
+        tables.put(meta.getName(), meta);   
             
  
     }
@@ -169,6 +197,18 @@ public class DB implements DBObject {
         tables.remove(oldID);
     }
     
+    public void dropConstraint(String table, String constraint){
+        JSONObject obj = readFile();
+        JSONObject constraints = (JSONObject) obj.get("constraints");
+        //quitarlo de la variable
+        this.constraints.get(table).remove(constraints.get(constraint));
+        constraints.remove(constraint);
+        obj.put("constraints",constraints);
+        writeFile("src/db/"+name+".json", obj.toJSONString());    
+        
+
+    }
+    
     public JSONObject readFile(){
         JSONParser parser = new JSONParser();
        
@@ -203,5 +243,49 @@ public class DB implements DBObject {
     
     public String getName(){
         return name;
+    }
+    /**
+       Primero cambia el nombre de la base de datos, y despues actualiza cada tabla con esta info.
+    */
+    public void setName(String name){
+        this.name=name;
+        //renombrar para todas las tablas
+        for(Map.Entry<String, MetaTable> table : tables.entrySet()){
+           Table tabla = (Table) table.getValue();
+           tabla.setDatabase(name);
+        }
+    }
+    
+    public boolean checkFK(){
+        return false;
+    }
+    
+    public boolean existsConstrain(String id){
+        jsonObject = readFile();
+        JSONObject listConstraints = (JSONObject) jsonObject.get("constraints");
+        return listConstraints.containsKey(id);
+    }
+    /**
+       Mira si hay una columna en uso por un constraint 
+     * @param table name of the table
+     * @param col name of the column
+     * @return returns null if is not in use. Returns the constraint name otherwise.
+    */
+    public String usingCol(String table,String col){
+        LinkedList lista = constraints.get(table);
+        Iterator<JSONObject> it = lista.iterator();
+        while(it.hasNext()){
+            JSONObject obj =it.next();
+            String type = (String) obj.get("type");
+            if(type.equals("primary")){
+                JSONArray columnas = (JSONArray) obj.get("columns");
+                if(columnas.contains(col))
+                    return (String) obj.get("name");
+            }
+            // TODO comprobacion para check y foreign
+        
+        }
+        
+        return null;
     }
 }

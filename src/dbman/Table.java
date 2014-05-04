@@ -7,6 +7,7 @@
 package dbman;
 
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import org.json.simple.JSONObject;
@@ -18,12 +19,14 @@ import org.json.simple.JSONObject;
 public class Table implements MetaTable {
     private String name;
     private HashMap<String,JSONObject> columns ; //JSONObject es un HashMap, puede tratarse como tal. El string es el nombre
-    private JSONObject meta;
+  
     private String database;
+    private long records;
     
-    public Table (String name,String database){
+    public Table (String name,String database, long records){
         this.name=name;
         this.database = database;
+        this.records = records;
         
     }
     
@@ -33,6 +36,18 @@ public class Table implements MetaTable {
 
     public void setName(String name){
         this.name = name;
+    }
+
+    public void addRecord(){
+        this.records++;
+    }
+
+    public void setDatabase(String database){
+        this.database = database;
+    }
+    
+    public long getRecords(){
+        return this.records;
     }
     
     @Override

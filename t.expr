@@ -1,1 +1,1 @@
-DROP TABLE prueba2
+ALTER TABLE test DROP COLUMN prueba3
