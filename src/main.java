@@ -57,7 +57,8 @@ public static String createTree(String word){
 //        System.out.println(tree.toStringTree(parser)); // print tree as text
 //          ParseTree tree = parser.program(); // parse; start at prog
         Visitante eval = new Visitante();
-        eval.visit(tree);   
+        eval.visit(tree);
+        System.out.println(eval.mensajes);
         
  }
  }

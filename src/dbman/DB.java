@@ -92,6 +92,25 @@ public class DB implements DBObject {
  
     }
     
+    public void addColumn(String table, JSONObject column){
+        JSONObject obj = readFile();
+        JSONArray array = (JSONArray) obj.get("tablas");
+        Iterator<JSONObject> iterator = array.iterator();
+        while(iterator.hasNext()){
+            JSONObject tabla = iterator.next();
+            if(tabla.get("name").equals(table)){
+                JSONArray columnas = (JSONArray) tabla.get("columns");
+                columnas.add(column);
+                tabla.put("columns", columnas);
+            }
+            break;
+        }
+        obj.put("tablas",array);
+        writeFile("src/db/"+name+".json", obj.toJSONString());
+        //agreagar a variable
+        tables.get(table).getColumns().put((String) column.get("name"), column);
+    }
+    
     public void dropTable(String table){
         JSONObject obj = readFile();
         JSONArray array = (JSONArray) obj.get("tablas");
@@ -106,6 +125,30 @@ public class DB implements DBObject {
         writeFile("src/db/"+name+".json", obj.toJSONString());
        //quitarlo de la variable
         tables.remove(table);
+    }
+    
+    public void dropColumn(String table,String column){
+        JSONObject obj = readFile();
+        JSONArray array = (JSONArray) obj.get("tablas");
+        Iterator<JSONObject> iterator = array.iterator();
+        while (iterator.hasNext()) {
+            JSONObject tabla = iterator.next();
+            if(tabla.get("name").equals(table)){
+                JSONArray columnas = (JSONArray) tabla.get("columns");
+                JSONArray nuevo = new JSONArray();
+                Iterator<JSONObject> iterator2 = columnas.iterator();
+                while(iterator2.hasNext()){
+                    JSONObject columna = iterator2.next();
+                    if(!columna.get("name").equals(column))
+                        nuevo.add(columna);
+                }
+                tabla.put("columns", nuevo);
+            }
+                
+        }      
+        writeFile("src/db/"+name+".json", obj.toJSONString());
+       //quitarlo de la variable
+        tables.get(table).getColumns().remove(column);
     }
     
     public void renameTable(String oldID,String newID){

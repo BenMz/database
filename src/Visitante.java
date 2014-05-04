@@ -117,7 +117,46 @@ public class Visitante extends
 
     @Override
     public Object visitAddCol(SQLParser.AddColContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       
+     //ver si no se ha creado la lista
+        
+        String table = ctx.ID(0).getText();
+        String colID = ctx.ID(1).getText();
+        
+        if(!workingDB.getTables().containsKey(table)){
+            mensajes = "Table "+table+" doesn't exist";
+            return -1;
+        }
+        if(workingDB.getTables().get(table).getColumns().containsKey(colID)){
+            mensajes = "Column "+colID+" already exists";
+            return -1;
+        }
+       
+        JSONObject datos = new JSONObject();
+        datos.put("name",colID);
+        
+        if(ctx.type().getChild(1)!=null){ //ver si es char
+            datos.put("type","CHAR");
+        }else
+            datos.put("type",ctx.type().getText());
+        
+        //si puede ser nulo o no
+        if (ctx.not!=null)
+            datos.put("notNull","true");
+        else
+            datos.put("notNull","false");
+        //si es char agregar tamano
+        if(datos.get("type").equals("CHAR"))
+            datos.put("size",Integer.parseInt(ctx.type().NUM().getText()));
+        
+        workingDB.addColumn(table,datos);
+      /*constraints*/
+        if(ctx.con!=null){
+           // TODO: verificacion de constraints
+        }
+        
+        mensajes = "Column "+colID+" added to table "+table;
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -187,8 +226,13 @@ public class Visitante extends
 
     @Override
     public Object visitDropCol(SQLParser.DropColContext ctx) {
-       visitChildren(ctx);  
-       return null;  //To change body of generated methods, choose Tools | Templates.
+        if(!workingDB.getTables().containsKey(ctx.ID(0).getText())){
+            mensajes = "Table "+ctx.ID(0).getText()+" doesn't exist";
+            return -1;
+        }
+        workingDB.dropColumn(ctx.ID(0).getText(),ctx.ID(1).getText());
+        mensajes = "Column "+ctx.ID(1).getText()+" from table "+ctx.ID(0).getText()+" has been deleted.";
+        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -546,7 +590,7 @@ public class Visitante extends
         }
         //Vamos a crear una lista de columnas [nombre,tipo,notNull]
         LinkedList datos = new LinkedList();
-        datos.add(name); //nombre de tabla
+        datos.add(name); //nombre de columna
         
         if(ctx.type().getChild(1)!=null){ //ver si es char
             datos.add("CHAR");

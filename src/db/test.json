@@ -1,1 +1,1 @@
-{"tablas":[{"name":"prueba","columns":[{"name":"d","type":"DATE","notNull":"false"},{"name":"b","type":"FLOAT","notNull":"true"},{"name":"c","type":"CHAR","notNull":"false","size":255},{"name":"a","type":"INT","notNull":"false"}]}]}
+{"tablas":[{"name":"prueba","columns":[{"name":"b","type":"FLOAT","notNull":"true"},{"name":"c","type":"CHAR","notNull":"false","size":255},{"name":"a","type":"INT","notNull":"false"},{"name":"d","notNull":"true","type":"DATE"}]}]}

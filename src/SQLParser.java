@@ -595,6 +595,8 @@ public class SQLParser extends Parser {
 		}
 	}
 	public static class AddColContext extends AlterStmContext {
+		public Token not;
+		public ConstraintContext con;
 		public ConstraintContext constraint() {
 			return getRuleContext(ConstraintContext.class,0);
 		}
@@ -648,7 +650,7 @@ public class SQLParser extends Parser {
 				_la = _input.LA(1);
 				if (_la==35) {
 					{
-					setState(150); match(35);
+					setState(150); ((AddColContext)_localctx).not = match(35);
 					setState(151); match(52);
 					}
 				}
@@ -657,7 +659,7 @@ public class SQLParser extends Parser {
 				_la = _input.LA(1);
 				if (_la==4) {
 					{
-					setState(154); constraint();
+					setState(154); ((AddColContext)_localctx).con = constraint();
 					}
 				}
 
