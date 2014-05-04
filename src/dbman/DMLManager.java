@@ -7,8 +7,10 @@
 package dbman;
 
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -16,10 +18,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
+import javax.script.ScriptException;
 import org.supercsv.cellprocessor.constraint.NotNull;
 import org.supercsv.cellprocessor.constraint.UniqueHashCode;
 import org.supercsv.cellprocessor.ift.CellProcessor;
+import org.supercsv.io.CsvMapReader;
 import org.supercsv.io.CsvMapWriter;
+import org.supercsv.io.ICsvMapReader;
 import org.supercsv.io.ICsvMapWriter;
 import org.supercsv.prefs.CsvPreference;
 
@@ -154,6 +163,14 @@ public class DMLManager {
         return null;
         
     }
+    private MetaTable getCurrentTable(){
+        //Get current table
+        MetaTable currTable = null;
+        for(MetaTable table : this.currTables.values()){
+            currTable = table;
+        }
+        return currTable;
+    }
     
     /**
      * Assumes columns are validated and values are type validated.
@@ -203,6 +220,101 @@ public class DMLManager {
         }
     }
     
+    public void delete(String validation) throws ConstrainException{
+        ICsvMapReader mapReader;
+        ICsvMapWriter mapWriter;
+        try {
+            MetaTable currTable = getCurrentTable();
+            String tempFile = currTable.physicalLocation()+".aux";
+            mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
+            mapWriter = new CsvMapWriter(new FileWriter(tempFile), CsvPreference.STANDARD_PREFERENCE);
+            
+            System.out.println(currTable.getName() + currTable.physicalLocation());
+            
+            // the header columns are used as the keys to the Map
+            final String[] header = mapReader.getHeader(true);
+            for(String a : header){
+                System.out.println("HEADE: "+a);
+            }
+            final CellProcessor[] processors =  new CellProcessor[currTable.getColumns().size()];
+            mapWriter.writeHeader(header);
+
+            Map<String, Object> rowMap;
+            while( (rowMap = mapReader.read(header, processors)) != null ) {
+                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+                            mapReader.getRowNumber(), rowMap));
+                    
+                    mapWriter.write(rowMap, header, processors);
+                    System.out.println(this.mapVals(validation, rowMap));
+                    
+                    HashMap<String, Map<String,Object>> canonical = new HashMap<>();
+                    canonical.put(currTable.getName(), rowMap);
+                    evalWhere(validation, canonical);
+            }
+            mapWriter.close();
+            mapReader.close();
+            File old = new File(currTable.physicalLocation());
+            old.delete();
+            File newfile = new File(tempFile);
+            newfile.renameTo(old);
+                
+        }
+        catch (IOException ex) {
+            Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
+        }
+
+    }
+    /**
+     * Evaluates a expression according to the API. It evaluates the expression
+     * by check the types 
+     * @param expr according to the API with full columns name in complete
+     * @param values Map got from the DB
+     * @return 
+     */
+    private boolean evalWhere(String expr, Map<String, Map<String, Object>> values) throws ConstrainException{
+        ScriptEngineManager mgr = new ScriptEngineManager();
+        ScriptEngine engine = mgr.getEngineByName("JavaScript");
+        try {
+            System.out.println(this.mapVals(expr, values.get("ABC")));
+            Object res = engine.eval(this.mapVals(expr, values.get("ABC")));
+            System.out.println(res);
+        
+        }catch(ScriptException e){
+            System.out.println(e);
+        }
+        
+        //We check the patterns in where
+        Pattern column_pattern = Pattern.compile( "\\{(.+\\.)?.+\\}"); //Hace match de cosas como {table.columna} o {columna}
+        Matcher matcher = column_pattern.matcher(expr);
+        while(matcher.find()){
+            String col = matcher.group();
+            String[] col_parts = col.substring(1, col.length()-1).split("\\.");
+            System.out.println("Matcher found: "+col_parts[0]+"  "+col_parts[1]);
+            if(col_parts.length == 1){
+                //Buscamos en qué tabla está
+                System.out.println("Matcher found: "+col_parts[0]);
+            }else {
+                //Veremos la tabla especificada
+                Map<String, Object> esp_table = values.get(col_parts[0]);
+                if(esp_table == null){
+                    throw new ConstrainException(("Table is not used on the FROM clause: "+col_parts[0]));
+                }else {
+                    Object replacement = esp_table.get(col_parts[1]);
+                    if(replacement!= null){
+                        expr = expr.replaceAll(col, replacement.toString());
+                    }else {
+                        throw new ConstrainException(("Column '"+col_parts[1]+"' does not exists on table "+col_parts[0]));
+                    }
+                }
+                
+                System.out.println(">>>"+expr);
+            }
+            
+        }
+        
+        return false;
+    }
+    
     public static void main(String[] args){
         DMLManager dbm = new DMLManager(new DummyDBObject());
         dbm.workWithTables("ABC");
@@ -214,10 +326,33 @@ public class DMLManager {
         List<String> vals = new LinkedList<>();
         vals.add("5");
         vals.add("6");
+        
+        
         try {
-            dbm.insert(cols, vals);
+            //dbm.insert(cols, vals);
+            dbm.delete("{ABC.a} == 'hola' && {ABC.b} > 0 ");
         } catch (ConstrainException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
+    
+    //Auxiliary methods
+    
+    private String mapVals(String format,Map<String, Object> values) {
+        StringBuilder convFormat = new StringBuilder(format);
+        LinkedList valueList = new LinkedList();
+        int currentPos = 1;
+        for(String key : values.keySet()){
+            String formatKey = "{" + key + "}";
+            int index = -1;
+            while ((index = convFormat.indexOf(formatKey, index)) != -1)
+              {
+                convFormat.replace(index, index + formatKey.length(), values.get(key).toString());
+              }
+            valueList.add(values.get(key));
+            ++currentPos;
+        }
+        return String.format(convFormat.toString(), valueList.toArray());
+    }
+    
 }
