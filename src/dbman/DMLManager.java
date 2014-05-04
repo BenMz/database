@@ -274,42 +274,43 @@ public class DMLManager {
     private boolean evalWhere(String expr, Map<String, Map<String, Object>> values) throws ConstrainException{
         ScriptEngineManager mgr = new ScriptEngineManager();
         ScriptEngine engine = mgr.getEngineByName("JavaScript");
-        try {
-            System.out.println(this.mapVals(expr, values.get("ABC")));
-            Object res = engine.eval(this.mapVals(expr, values.get("ABC")));
-            System.out.println(res);
-        
-        }catch(ScriptException e){
-            System.out.println(e);
-        }
         
         //We check the patterns in where
-        Pattern column_pattern = Pattern.compile( "\\{(.+\\.)?.+\\}"); //Hace match de cosas como {table.columna} o {columna}
+        Pattern column_pattern = Pattern.compile( "\\{([^\\. ;]+\\.)?[a-z]+\\}"); //Hace match de cosas como {table.columna} o {columna}
         Matcher matcher = column_pattern.matcher(expr);
         while(matcher.find()){
             String col = matcher.group();
             String[] col_parts = col.substring(1, col.length()-1).split("\\.");
-            System.out.println("Matcher found: "+col_parts[0]+"  "+col_parts[1]);
+            //Normalizar col para el regex
+            col = col.replace("{", "\\{").replace("}", "\\}");
             if(col_parts.length == 1){
-                //Buscamos en qué tabla está
-                System.out.println("Matcher found: "+col_parts[0]);
-            }else {
-                //Veremos la tabla especificada
-                Map<String, Object> esp_table = values.get(col_parts[0]);
-                if(esp_table == null){
-                    throw new ConstrainException(("Table is not used on the FROM clause: "+col_parts[0]));
-                }else {
-                    Object replacement = esp_table.get(col_parts[1]);
-                    if(replacement!= null){
-                        expr = expr.replaceAll(col, replacement.toString());
-                    }else {
-                        throw new ConstrainException(("Column '"+col_parts[1]+"' does not exists on table "+col_parts[0]));
+                //Buscamos en qué tabla está                
+                if(this.existsColumn(null, col_parts[0]) == 1){
+                    String tname = "";
+                    for(Map.Entry<String, MetaTable> currTs : currTables.entrySet()){
+                        if(currTs.getValue().getColumns().containsKey(col_parts[0])){
+                            tname = currTs.getKey();
+                        }
                     }
+                    Object replacement = values.get(tname).get(col_parts[0]);
+                    expr = expr.replaceAll(col, replacement.toString());
+                }
+            } else {
+                if(this.existsColumn(col_parts[0], col_parts[1]) == 1){
+                    Object replacement = values.get(col_parts[0]).get(col_parts[1]);
+                    expr = expr.replaceAll(col, replacement.toString());
                 }
                 
-                System.out.println(">>>"+expr);
             }
-            
+        }
+        try {
+            System.out.println(">>>"+expr);
+            Object res = engine.eval(expr);
+            System.out.println(res);
+            return (boolean) res;
+        
+        }catch(ScriptException e){
+            System.out.println(e);
         }
         
         return false;
@@ -330,7 +331,7 @@ public class DMLManager {
         
         try {
             //dbm.insert(cols, vals);
-            dbm.delete("{ABC.a} == 'hola' && {ABC.b} > 0 ");
+            dbm.delete("{a} == 'hola' && {b} > 0 ");
         } catch (ConstrainException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
