@@ -107,7 +107,8 @@ public class DMLManager {
             if(table_aliases.containsKey(table)){
                 table = table_aliases.get(table);
             }
-            if(this.currTables.get(table).getColumns().containsKey(col)){
+            MetaTable sel_table = this.currTables.get(table);
+            if(sel_table != null && sel_table.getColumns().containsKey(col)){
                 result = 1;
             }
         }else {
@@ -219,7 +220,11 @@ public class DMLManager {
             }
         }
     }
-    
+    /**
+     * Deletes the rows that evaluate true for the  validation. If the is no validation it deletes every row.
+     * @param validation Must be as described in the API
+     * @throws ConstrainException 
+     */
     public void delete(String validation) throws ConstrainException{
         ICsvMapReader mapReader;
         ICsvMapWriter mapWriter;
@@ -233,25 +238,27 @@ public class DMLManager {
             
             // the header columns are used as the keys to the Map
             final String[] header = mapReader.getHeader(true);
-            for(String a : header){
-                System.out.println("HEADE: "+a);
-            }
             final CellProcessor[] processors =  new CellProcessor[currTable.getColumns().size()];
             mapWriter.writeHeader(header);
-
-            Map<String, Object> rowMap;
-            while( (rowMap = mapReader.read(header, processors)) != null ) {
-                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
-                            mapReader.getRowNumber(), rowMap));
-                    Map<String, Map<String, Object>> data = new HashMap<>();
-                    data.put(currTable.getName(), rowMap);
-                    if(!this.evalWhere(validation, data)){
-                        mapWriter.write(rowMap, header, processors);
-                        System.out.println(this.mapVals(validation, rowMap));
-                    }
+            //Si 
+            if(validation != null){
+                Map<String, Object> rowMap;
+                //Mientras haya que leer
+                while( (rowMap = mapReader.read(header, processors)) != null ) {
+                        System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+                                mapReader.getRowNumber(), rowMap));
+                        //Preparamos objeto como lo espera el evalWhere
+                        Map<String, Map<String, Object>> data = new HashMap<>();
+                        data.put(currTable.getName(), rowMap);
+                        //Si no cumple con el while
+                        if(!this.evalWhere(validation, data)){
+                            mapWriter.write(rowMap, header, processors);
+                        }
+                }
             }
             mapWriter.close();
             mapReader.close();
+            //Borrar original y Cambiar archivo auxiliar por normal
             File old = new File(currTable.physicalLocation());
             old.delete();
             File newfile = new File(tempFile);
@@ -263,6 +270,62 @@ public class DMLManager {
         }
 
     }
+    
+    public void update(List<String> columns, List<String> values, String validation) throws ConstrainException{
+        if(columns.size() != values.size()){
+            throw new ConstrainException(String.format("Values passed (%s) do not corresond to the specified columns (%s).", columns.size(), values.size()));
+        }
+        ICsvMapReader mapReader;
+        ICsvMapWriter mapWriter;
+        try {
+            MetaTable currTable = getCurrentTable();
+            String tempFile = currTable.physicalLocation()+".aux";
+            mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
+            mapWriter = new CsvMapWriter(new FileWriter(tempFile), CsvPreference.STANDARD_PREFERENCE);
+            
+            System.out.println(currTable.getName() + currTable.physicalLocation());
+            
+            // the header columns are used as the keys to the Map
+            final String[] header = mapReader.getHeader(true);
+            final CellProcessor[] processors =  new CellProcessor[currTable.getColumns().size()];
+            mapWriter.writeHeader(header);
+            
+            Map<String, Object> rowMap;
+            //Mientras haya que leer
+            while( (rowMap = mapReader.read(header, processors)) != null ) {
+                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+                            mapReader.getRowNumber(), rowMap));
+
+                    //Preparamos objeto como lo espera el evalWhere
+                    Map<String, Map<String, Object>> data = new HashMap<>();
+                    data.put(currTable.getName(), rowMap);
+                    //Si no cumple con el while
+                    if(validation == null || this.evalWhere(validation, data)){
+                        //Cambiamos los valores de la file para actualizar
+                        for(int i = 0; i<columns.size(); i++){
+                            if(this.existsColumn(currTable.getName(), columns.get(i))==1){
+                                rowMap.put(columns.get(i), values.get(i));
+                            }else {
+                                throw new ConstrainException(String.format("Columns '%s' does not exists on table '%s'", columns.get(i), currTable.getName()));
+                            }
+                        }
+                    }
+                    mapWriter.write(rowMap, header, processors);
+            }
+            mapWriter.close();
+            mapReader.close();
+            //Borrar original y Cambiar archivo auxiliar por normal
+            File old = new File(currTable.physicalLocation());
+            old.delete();
+            File newfile = new File(tempFile);
+            newfile.renameTo(old);
+                
+        }
+        catch (IOException ex) {
+            Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
+    
     /**
      * Evaluates a expression according to the API. It evaluates the expression
      * by check the types 
@@ -271,16 +334,15 @@ public class DMLManager {
      * @return 
      */
     private boolean evalWhere(String expr, Map<String, Map<String, Object>> values) throws ConstrainException{
-        ScriptEngineManager mgr = new ScriptEngineManager();
-        ScriptEngine engine = mgr.getEngineByName("JavaScript");
         
         //We check the patterns in where
-        Pattern column_pattern = Pattern.compile( "\\{([^\\. ;]+\\.)?[a-z]+\\}"); //Hace match de cosas como {table.columna} o {columna}
+        Pattern column_pattern = Pattern.compile( "\\{([^\\. ;]+\\.)?[^\\. ;]+\\}"); //Hace match de cosas como {tabla.columna} o {columna}
         Matcher matcher = column_pattern.matcher(expr);
+        //Va a iterar cada elemento que cumpla con patrón
         while(matcher.find()){
             String col = matcher.group();
             String[] col_parts = col.substring(1, col.length()-1).split("\\.");
-            //Normalizar col para el regex
+            //Normalizar col para el regex a reemplazar en la expresión luego
             col = col.replace("{", "\\{").replace("}", "\\}");
             if(col_parts.length == 1){
                 //Buscamos en qué tabla está                
@@ -293,16 +355,23 @@ public class DMLManager {
                     }
                     Object replacement = values.get(tname).get(col_parts[0]);
                     expr = expr.replaceAll(col, replacement.toString());
+                }else {
+                    throw new ConstrainException(String.format("Column '%s' does not exists.", col_parts[0]));
                 }
             } else {
+                //Vemos por tabla específica
                 if(this.existsColumn(col_parts[0], col_parts[1]) == 1){
                     Object replacement = values.get(col_parts[0]).get(col_parts[1]);
                     expr = expr.replaceAll(col, replacement.toString());
+                }else {
+                    throw new ConstrainException(String.format("Column '%s.%s' does not exists.", col_parts[0], col_parts[1]));
                 }
                 
             }
         }
         try {
+            ScriptEngineManager mgr = new ScriptEngineManager();
+            ScriptEngine engine = mgr.getEngineByName("JavaScript");
             System.out.println(">>>"+expr);
             Object res = engine.eval(expr);
             System.out.println(res);
@@ -310,9 +379,8 @@ public class DMLManager {
         
         }catch(ScriptException e){
             System.out.println(e);
+            throw new ConstrainException("WHERE expression is invalid '"+expr+"'");
         }
-        
-        return false;
     }
     
     public static void main(String[] args){
@@ -320,39 +388,19 @@ public class DMLManager {
         dbm.workWithTables("ABC");
         
         List<String> cols = new LinkedList<>();
-        cols.add("a");
         cols.add("b");
         
         List<String> vals = new LinkedList<>();
-        vals.add("5");
-        vals.add("6");
+        vals.add("adios");
         
         
         try {
             //dbm.insert(cols, vals);
-            dbm.delete("{a} < 3");
+            //dbm.delete("{MMM.t} < 3");
+            dbm.update(cols, vals, "{a} > 2");
         } catch (ConstrainException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
-    }
-    
-    //Auxiliary methods
-    
-    private String mapVals(String format,Map<String, Object> values) {
-        StringBuilder convFormat = new StringBuilder(format);
-        LinkedList valueList = new LinkedList();
-        int currentPos = 1;
-        for(String key : values.keySet()){
-            String formatKey = "{" + key + "}";
-            int index = -1;
-            while ((index = convFormat.indexOf(formatKey, index)) != -1)
-              {
-                convFormat.replace(index, index + formatKey.length(), values.get(key).toString());
-              }
-            valueList.add(values.get(key));
-            ++currentPos;
-        }
-        return String.format(convFormat.toString(), valueList.toArray());
     }
     
 }
