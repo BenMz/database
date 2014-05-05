@@ -23,8 +23,6 @@ import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 import org.json.simple.JSONObject;
-import org.supercsv.cellprocessor.constraint.NotNull;
-import org.supercsv.cellprocessor.constraint.UniqueHashCode;
 import org.supercsv.cellprocessor.ift.CellProcessor;
 import org.supercsv.io.CsvMapReader;
 import org.supercsv.io.CsvMapWriter;
@@ -55,7 +53,6 @@ public class DMLManager {
             if(!f.exists()) {
                 ICsvMapWriter mapWriter = null;
                 try {
-                        
                         //Prepare for writing
                         mapWriter = new CsvMapWriter(new FileWriter(table.physicalLocation()),
                                 CsvPreference.STANDARD_PREFERENCE);
@@ -84,6 +81,11 @@ public class DMLManager {
                 currTables.put(table, db.getTables().get(table));
             }
         }
+    }
+    
+    private void doneWithTables(){
+        currTables.clear();
+        table_aliases.clear();
     }
     
     /**
@@ -175,20 +177,26 @@ public class DMLManager {
     
     private String getValType(String val){
         System.out.println("getValType: "+val);
-        if(val.matches("[0-9]+")){
+        if(val == null || val.equals("NULL") || val.equals("")){
+            return "NULL";
+        }else if(val.matches("[0-9]+")){
             return "INT";
         } else if(val.matches("[0-9]*\\.[0-9]*") && val.length()>1){
             return "FLOAT";
         } else if(val.matches("^(19|20)\\d\\d[\\-\\/.](0[1-9]|1[012])[\\-\\/.](0[1-9]|[12][0-9]|3[01])$")) {
             return "DATE";
-        } else {
+        } else if(val.startsWith("'") && val.endsWith("'") || val.startsWith("\"") && val.endsWith("\"")) {
             return "CHAR";
+        } else {
+            return "UNDEFINED";
         }
     }
     
     private String prepareValInsert(String coltype, String value){
         String valtype = this.getValType(value);
         if(coltype.equals(valtype)){
+            return value;
+        }else if((coltype.equals("CHAR") || coltype.equals("DATE")) && valtype.equals("NULL")){
             return value;
         }else if(coltype.equals("INT") && valtype.equals("FLOAT")){
             return value.split("\\.")[0];
@@ -228,6 +236,7 @@ public class DMLManager {
                 }
                 //Prepare to store in CSV
                 Map<String, String> newRow = new LinkedHashMap<>();
+                
                 for(int i = 0; i<columns.size(); i++){
                     String coltype = this.getColumnType(currTable.getName(), columns.get(i));
                     String valinsert = this.prepareValInsert(coltype, values.get(i));
@@ -237,7 +246,14 @@ public class DMLManager {
                     }else {
                         newRow.put(columns.get(i),valinsert);
                     }
-                    
+                }
+                //Check not null
+                Map<String, JSONObject> cols = currTable.getColumns();
+                for(String col : cols.keySet()){
+                    if(newRow.get(col) == null && cols.get(col).get("notNull").equals("true")){
+                        throw new ConstrainException(String.format("Insert violates NOT NULL constraint on column '%s' of table '%s'.", 
+                                col,  currTable.getName()));
+                    }
                 }
                 
                 ICsvMapWriter mapWriter = null;
@@ -259,6 +275,7 @@ public class DMLManager {
                 }
             }
         }
+        doneWithTables();
     }
     /**
      * Deletes the rows that evaluate true for the  validation. If the is no validation it deletes every row.
@@ -308,7 +325,7 @@ public class DMLManager {
         catch (IOException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
-
+        doneWithTables();
     }
     
     public void update(List<String> values, List<String> columns, String validation) throws ConstrainException{
@@ -350,6 +367,14 @@ public class DMLManager {
                                     throw new ConstrainException(String.format("Incompatible types: column '%s' is type %s and '%s' is %s", columns.get(i), 
                                             this.getColumnType(currTable.getName(), columns.get(i)), values.get(i), this.getValType(values.get(i))));
                                 }else {
+                                    //Check not null
+                                    Map<String, JSONObject> cols = currTable.getColumns();
+                                    for(String col : cols.keySet()){
+                                        if(rowMap.get(col) == null && cols.get(col).get("notNull").equals("true")){
+                                            throw new ConstrainException(String.format("Insert violates NOT NULL constraint on column '%s' of table '%s'.", 
+                                                    col,  currTable.getName()));
+                                        }
+                                    }
                                     rowMap.put(columns.get(i),valinsert);
                                 }
                             }else {
@@ -366,11 +391,12 @@ public class DMLManager {
             old.delete();
             File newfile = new File(tempFile);
             newfile.renameTo(old);
-                
+            
         }
         catch (IOException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
+        doneWithTables();
     }
     
     /**
@@ -439,11 +465,12 @@ public class DMLManager {
         cols.add("b");
         
         List<String> vals = new LinkedList<>();
-        vals.add("15.22");
-        vals.add("14");
+        vals.add("18.22");
+        vals.add("");
         
         
         try {
+            //dbm.insert(vals, cols);
             dbm.update(vals, cols, null);
             //dbm.delete("{MMM.t} < 3");
             //dbm.update(cols, vals, "{a} > 2");
