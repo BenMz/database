@@ -74,7 +74,6 @@ public class Table implements MetaTable {
     public void setPK(JSONArray columns){
         for (Object column : columns) 
             PK.add((String) column);
-        
     }
     
     @Override

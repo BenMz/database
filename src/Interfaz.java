@@ -179,13 +179,23 @@ public static String createTree(String word){
         String[] result = test.split("\\ ");
 //        System.out.println(tree.toStringTree(parser)); // print tree as text
 //          ParseTree tree = parser.program(); // parse; start at prog
-        Visitante eval = new Visitante();
+        Visitante eval = new Visitante(verbose.isSelected());
         eval.visit(tree);   
         int iterador = 0;
+        String message = "";
+        if(verbose.isSelected()){
+            for(Object data : eval.getAll()){
+                message+=data.toString()+"\n";
+            }
+        }
+        else
+             message = eval.getMensajes();
         for(String s: result){
            createTree(s);
- 
+           
         }
+        
+        
         System.out.println("TERMINA COMPILACION");
 //        BufferedReader reader = new BufferedReader(new FileReader("D:\\cole x_x\\Java\\Parser3\\src\\t.expr"));
 //        String linea = reader.readLine();
@@ -195,7 +205,7 @@ public static String createTree(String word){
 //        while(linea!=null){
 //            reader.readLine();
 //        }
-            return eval.getMensajes();
+            return message;
         }
         
         catch(Exception e){
@@ -219,6 +229,7 @@ public static String createTree(String word){
         jScrollPane2 = new javax.swing.JScrollPane();
         resultText = new javax.swing.JTextArea();
         jButton1 = new javax.swing.JButton();
+        verbose = new javax.swing.JCheckBox();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -233,10 +244,17 @@ public static String createTree(String word){
         resultText.setRows(5);
         jScrollPane2.setViewportView(resultText);
 
-        jButton1.setText("jButton1");
+        jButton1.setText("Execute");
         jButton1.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 jButton1ActionPerformed(evt);
+            }
+        });
+
+        verbose.setText("verbose");
+        verbose.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                verboseActionPerformed(evt);
             }
         });
 
@@ -249,14 +267,18 @@ public static String createTree(String word){
             .addGroup(jPanel1Layout.createSequentialGroup()
                 .addContainerGap()
                 .addComponent(jButton1)
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(verbose)
+                .addContainerGap())
         );
         jPanel1Layout.setVerticalGroup(
             jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanel1Layout.createSequentialGroup()
                 .addComponent(jTabbedPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 160, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jButton1)
+                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(jButton1)
+                    .addComponent(verbose))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(jScrollPane2, javax.swing.GroupLayout.DEFAULT_SIZE, 155, Short.MAX_VALUE))
         );
@@ -297,6 +319,10 @@ public static String createTree(String word){
        Message=null;
         
     }//GEN-LAST:event_jButton1ActionPerformed
+
+    private void verboseActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_verboseActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_verboseActionPerformed
 
     /**
      * @param args the command line arguments
@@ -341,5 +367,6 @@ public static String createTree(String word){
     private javax.swing.JTabbedPane jTabbedPane1;
     private javax.swing.JTextArea queryText;
     private javax.swing.JTextArea resultText;
+    private javax.swing.JCheckBox verbose;
     // End of variables declaration//GEN-END:variables
 }

@@ -56,7 +56,7 @@ public static String createTree(String word){
         String[] result = test.split("\\ ");
 //        System.out.println(tree.toStringTree(parser)); // print tree as text
 //          ParseTree tree = parser.program(); // parse; start at prog
-        Visitante eval = new Visitante();
+        Visitante eval = new Visitante(false);
         eval.visit(tree);
         System.out.println(eval.getMensajes());
         

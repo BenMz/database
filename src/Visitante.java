@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.JOptionPane;
@@ -32,6 +33,7 @@ import org.supercsv.prefs.CsvPreference;
  */
 public class Visitante extends SQLBaseVisitor<Object>{
     private String mensajes="";
+    private LinkedList<String> all = new LinkedList();
     private DB workingDB = null;
     private HashMap<String, LinkedList> columns ; //se usa al momento de crear tabla
     private LinkedList columnOrder;
@@ -41,7 +43,12 @@ public class Visitante extends SQLBaseVisitor<Object>{
     private int insertedRows = 0;
     private int deletedRows = 0;
     private int updatedRows = 0;
-
+    private boolean verbose;
+    
+    public Visitante(boolean verbose ){
+        this.verbose=verbose;
+    }
+    
     @Override
     public Object visitExpression(SQLParser.ExpressionContext ctx) {
     
@@ -59,11 +66,13 @@ public class Visitante extends SQLBaseVisitor<Object>{
         String refTable = ctx.ID().getText();
        if(constraints.containsKey(id)){
            mensajes = "The relation "+id+" was already created";
+           all.add(mensajes);
           return -1;
        }
        //ver si existe la tabla foranea 
        if(!workingDB.getTables().containsKey(refTable)){
            mensajes = "The table"+refTable+" doesn't exist";
+           all.add(mensajes);
            return -1;
        }
        //columnas de la tabla local
@@ -77,11 +86,13 @@ public class Visitante extends SQLBaseVisitor<Object>{
             if(workingDB.getTables().get(alterTable)==null){
                 if(!columns.containsKey(col)){
                     mensajes = "Column "+col+" doesn't exist";
+                    all.add(mensajes);
                     return -1;
                 }
             }else{
                 if(!workingDB.getTables().get(alterTable).getColumns().containsKey(col)){
                     mensajes = "Column "+col+" doesn't exist";
+                    all.add(mensajes);
                     return -1;                  
                 }
             }
@@ -104,6 +115,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
            
            if(!workingDB.getTables().get(refTable).getPK().contains(col)){
                mensajes = "Column "+col+" is not unique in table "+refTable;
+               all.add(mensajes);
                return -1;
            }
            //determinar si son del mismo tipo
@@ -117,6 +129,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
             }
            if(!(tipo).equals(refCol.get("type"))){
                mensajes = "Column "+arrayConstraints.get(index)+" has different type than "+col;
+               all.add(mensajes);
                return -1;              
            }
            arrayRef.add(col);   
@@ -165,10 +178,12 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
        if(nuevo.exists()){
            mensajes+="No puede renombrarlo. Ya existe una BD con el nombre de "+ctx.ID(1);
+           all.add(mensajes);
            return -1;
        }
        if(!viejo.exists()){
            mensajes+="No existe la BD con el nombre de "+ctx.ID(0);
+           all.add(mensajes);
            return -1;
            
        }
@@ -182,6 +197,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
         viejo = new File("src/db/"+ctx.ID(0)+".json"); 
         viejo.renameTo(nuevo);
         mensajes = "Se ha cambiado de nombre a "+ctx.ID(1);
+        all.add(mensajes);
        return null;
     }
 
@@ -208,6 +224,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
     public Object visitDeleteStm(SQLParser.DeleteStmContext ctx) {
        if(workingDB==null){
            mensajes = "Not using any database";
+           all.add(mensajes);
            return -1;
        }
        DMLManager dbm = new DMLManager(workingDB);
@@ -219,6 +236,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
             
         } catch (ConstrainException ex) {
             mensajes = "Unable to delete "+ex.getMessage();
+            all.add(mensajes);
             return -1;
         }
         deletedRows+=result;
@@ -244,16 +262,22 @@ public class Visitante extends SQLBaseVisitor<Object>{
                 case "dropCol":
                     workingDB.dropColumn(alterTable, (String) result.get(1));
                     mensajes = "Column "+ result.get(1)+" from table "+alterTable+" has been deleted.";
+                    all.add(mensajes);
                     break;
                 case "dropCon":
                     workingDB.dropConstraint(alterTable, (String) result.get(1));
+                    mensajes = "Constraint "+result.get(1)+" deleted";
+                    all.add(mensajes);
                     break;
                 case "addCon":
                     workingDB.addConstraint(alterTable, (JSONObject) result.get(1));
+                    mensajes = "Constraint "+result.get(1)+" added";
+                    all.add(mensajes);
                     break;
                 case "addCol":
                     workingDB.addColumn(alterTable, (JSONObject) result.get(1));  
                     mensajes = "Column "+result.get(2)+" added to table "+alterTable;
+                    all.add(mensajes);
                     break;
                 case "addColCon":
                     LinkedList<JSONObject> allConstraints = (LinkedList<JSONObject>) result.get(1);
@@ -291,10 +315,12 @@ public class Visitante extends SQLBaseVisitor<Object>{
         
         if(!workingDB.getTables().containsKey(table)){
             mensajes = "Table "+table+" doesn't exist";
+            all.add(mensajes);
             return -1;
         }
         if(workingDB.getTables().get(table).getColumns().containsKey(colID) || columns.containsKey(colID)){
             mensajes = "Column "+colID+" already exists";
+            all.add(mensajes);
             return -1;
         }
         
@@ -401,7 +427,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
        return ctx.getText();  
     }
 
-    @Override
+   @Override
     public Object visitSingleMember(SQLParser.SingleMemberContext ctx) {
        LinkedList lista = new LinkedList();
        lista.add(ctx.idMember().getText()); //agregar el id;
@@ -415,13 +441,19 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitMulAss(SQLParser.MulAssContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       LinkedList lista = new LinkedList();
+       lista.push(visit(ctx.expression())); //agregar el id;
+       HashMap result = new HashMap();
+       result.put(ctx.ID().getText(), lista);
+//       System.out.println(lista);
+       return result;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
     public Object visitDropCon(SQLParser.DropConContext ctx)   {
        if(!workingDB.existsConstrain(ctx.ID().getText())){
            mensajes = "The constraint "+ctx.ID().getText()+" doesn't exist";
+           all.add(mensajes);
            return -1;
        }
        LinkedList<String> result = new LinkedList();
@@ -447,6 +479,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
         //verificar que exista
         if(!workingDB.getTables().get(alterTable).getColumns().containsKey(ctx.ID().getText())){
             mensajes = "Column "+ ctx.ID().getText()+" doesn't exist";
+            all.add(mensajes);
             return -1;             
         }
         
@@ -454,6 +487,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
         String result = workingDB.usingCol(alterTable, ctx.ID().getText());
         if(result!=null){
             mensajes = "Constraint "+result+" references column "+ ctx.ID().getText();
+            all.add(mensajes);
             return -1;           
         }
 
@@ -481,6 +515,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
     public Object visitUseDB(SQLParser.UseDBContext ctx) {      
         workingDB = new DB(ctx.ID().getText());
         mensajes = "Usando la base de datos "+workingDB.getName();
+        all.add(mensajes);
         return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -492,7 +527,49 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitUpdateStm(SQLParser.UpdateStmContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       if(workingDB==null){
+           mensajes = "Not using any database";
+           all.add(mensajes);
+           return -1;
+       }
+       if(!workingDB.getTables().containsKey(ctx.ID().getText())){
+           mensajes = "Table "+ctx.ID().getText()+" doesn't exist";
+           all.add(mensajes);
+           return -1;
+       }
+       DMLManager dbm = new DMLManager(workingDB);
+       dbm.workWithTables(ctx.ID().getText());
+       HashMap assignments = null;
+       try{
+           assignments = (HashMap) visit(ctx.getChild(3)); //child 3 = assignlist
+       }catch(Exception e){
+           mensajes = "Error in update: "+e.getMessage();
+           all.add(mensajes);
+       }
+       
+       System.out.println(assignments);
+       List<String> columns = new LinkedList();
+       List<String> values = new LinkedList();
+       Iterator<Map.Entry> it = assignments.entrySet().iterator();
+       while(it.hasNext()){
+           Map.Entry pair = it.next();
+           columns.add((String) pair.getKey());
+           LinkedList val = (LinkedList) pair.getValue();
+           values.add((String) val.get(0));
+       }
+        
+       String where = (String) visit(ctx.whereClause());
+       int result = 0;
+        try {
+            result = dbm.update(values,columns,where);
+            
+        } catch (ConstrainException ex) {
+            mensajes = "Unable to update "+ex.getMessage();
+            all.add(mensajes);
+            return -1;
+        }
+        updatedRows+=result;
+       return null;
     }
 
     @Override
@@ -514,6 +591,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
        constraints = new HashMap ();
      if(workingDB.getTables().containsKey(ctx.ID().getText())){
          mensajes = "Table "+ctx.ID().getText()+" already exists";
+         all.add(mensajes);
          return -1;
      }
      
@@ -593,6 +671,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
         String table = alterTable;
         if(!workingDB.getTables().containsKey(table)){
             mensajes = "Table "+table+" doesn't exist";
+            all.add(mensajes);
             return -1;
         }
         
@@ -628,7 +707,16 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitSingleAss(SQLParser.SingleAssContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       LinkedList lista = new LinkedList();
+       lista.push(ctx.expression().getText()); //agregar el id;
+       HashMap result = (HashMap) visitChildren(ctx);
+       if(result.containsKey(ctx.ID().getText())){
+           mensajes = "Double assignment in column "+ctx.ID().getText();
+           all.add(mensajes);
+           return -1;
+       }
+       result.put(ctx.ID().getText(), lista);
+       return result;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -653,7 +741,17 @@ public class Visitante extends SQLBaseVisitor<Object>{
     public Object visitMulMember(SQLParser.MulMemberContext ctx) {
        LinkedList lista = new LinkedList();
        lista.add(ctx.idMember().getText()); //agregar el id;
-       LinkedList result = (LinkedList) visit(ctx.idList());
+        LinkedList result ;
+       try{
+            result = (LinkedList) visit(ctx.idList());
+       }catch(Exception e){
+           return -1;
+       }
+       if(result.contains(ctx.idMember().getText())){
+           mensajes = "Column "+ctx.idMember().getText()+" repeated twice";
+           all.add(mensajes);
+           return -1;
+       }
        Iterator it = result.iterator();
        while(it.hasNext())
            lista.add(it.next());
@@ -670,16 +768,19 @@ public class Visitante extends SQLBaseVisitor<Object>{
        
         if(!workingDB.getTables().containsKey(ctx.ID().getText())){
             mensajes = "Table "+ctx.ID().getText()+" doesn't exist";
+            all.add(mensajes);
             return -1;
         }
        
         String result = workingDB.usingTable(ctx.ID().getText());
         if(result!=null){
             mensajes = result;
+            all.add(mensajes);
             return -1;
         }
         workingDB.dropTable(ctx.ID().getText());
         mensajes = "Table "+ctx.ID().getText()+" deleted";
+        all.add(mensajes);
         File f = new File("src/db/"+workingDB.getName()+"/"+ctx.ID().getText()+".csv");
         f.delete();
         return null;  //To change body of generated methods, choose Tools | Templates.
@@ -698,12 +799,14 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
        if(!f.exists()){
            mensajes="No existe la BD "+ctx.ID();
+           all.add(mensajes);
            return -1;
        }
        
        //ver si no se esta usando
        if(workingDB!=null && workingDB.getName().equals(ctx.ID().getText())){
            mensajes = "La BD "+ctx.ID().getText()+" se esta usando";
+           all.add(mensajes);
        }
       // prompt si esta seguro de borrarlo 
       int prompt = JOptionPane.showConfirmDialog(null, "Esta seguro que quiere borrar la base de datos "+ctx.ID().getText()+"?","Borrar?",  JOptionPane.YES_NO_OPTION);
@@ -720,6 +823,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
        f = new File("src/db/"+ctx.ID()+".json"); 
        f.delete();
        mensajes+="Se ha borrado la BD "+ctx.ID();
+       all.add(mensajes);
        return null;
     }
 
@@ -741,6 +845,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
        if(!f.mkdir()){
            mensajes="Ya existe una base de datos con ese nombre";
+           all.add(mensajes);
            return -1;
        }
        JSONObject obj = new JSONObject();
@@ -757,6 +862,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
 		e.printStackTrace();
 	}  
        mensajes="Se ha creado la base de datos";
+       all.add(mensajes);
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -764,6 +870,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
     public Object visitInsertStm(SQLParser.InsertStmContext ctx) {
        if(workingDB==null){
            mensajes = "Not using any database";
+           all.add(mensajes);
            return -1;
        }
        DMLManager dbm = new DMLManager(workingDB);
@@ -775,6 +882,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
             dbm.insert(values, columns);
         } catch (ConstrainException ex) {
            mensajes = "Unable to insert "+ex.getMessage();
+           all.add(mensajes);
            return -1;
         }
        insertedRows++;
@@ -796,6 +904,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
        String id = ctx.ID().getText();
        if(workingDB.existsConstrain(id) || constraints.containsKey(id)){
            mensajes = "The relation "+id+" already exists";
+           all.add(mensajes);
            return -1;
        }
        
@@ -838,10 +947,12 @@ public class Visitante extends SQLBaseVisitor<Object>{
        String oldID = ctx.ID(0).getText();
        if(workingDB.getTables().containsKey(newID)){
            mensajes = "Table "+newID+" already exists.";
+           all.add(mensajes);
            return -1;
        }
        if(!workingDB.getTables().containsKey(oldID)){
            mensajes = "Table "+newID+" doesn't exists.";
+           all.add(mensajes);
            return -1;
        }
        workingDB.renameTable(oldID,newID);
@@ -888,11 +999,13 @@ public class Visitante extends SQLBaseVisitor<Object>{
        String id = ctx.getParent().getChild(1).getText();//agarra el id del padre, que es Constraint
        if(constraints.containsKey(id)){
            mensajes = "The relation "+id+" was already created";
+           all.add(mensajes);
           return -1;
        }
        
        if(constraints.containsKey("_pk") ||  workingDB.hasPK(alterTable)){
            mensajes = "Table already has primary key";
+           all.add(mensajes);
            return -1;
        }
        
@@ -905,11 +1018,13 @@ public class Visitante extends SQLBaseVisitor<Object>{
            if(workingDB.getTables().containsKey(alterTable)){
                if(!workingDB.getTables().get(alterTable).getColumns().containsKey(col)){
                    mensajes = "The column "+col+" doesn't exist";
+                   all.add(mensajes);
                    return -1;
                }
            }else{
                if(!columns.containsKey(col)){
                    mensajes = "The column "+col+" doesn't exist";
+                   all.add(mensajes);
                    return -1;                  
                }
            }
@@ -984,6 +1099,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
         
         if(columns.containsKey(name)){
             mensajes = "Column "+name+" is already created";
+            all.add(mensajes);
             return -1;
         }
         //Vamos a crear una lista de columnas [nombre,tipo,notNull]
@@ -1046,7 +1162,25 @@ public class Visitante extends SQLBaseVisitor<Object>{
     }
 
     public String getMensajes(){
+        String mensajes = this.mensajes;
+        if(insertedRows>0)
+            mensajes+="\nInserted rows: "+insertedRows;
+        if(updatedRows>0)
+            mensajes+="\nUpdated rows: "+updatedRows;
+        if(deletedRows>0)
+            mensajes+="\nDeleted rows: "+deletedRows;
         return this.mensajes;
     }
+    
+    public LinkedList getAll(){
+        if(insertedRows>0)
+            all.add("\nInserted rows: "+insertedRows);
+        if(updatedRows>0)
+            all.add("\nUpdated rows: "+updatedRows);
+        if(deletedRows>0)
+            all.add("\nDeleted rows: "+deletedRows);
+        return all;
+    }
+    
     
 }

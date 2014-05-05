@@ -6,12 +6,15 @@
 
 package dbman;
 
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -19,6 +22,11 @@ import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
+import org.supercsv.cellprocessor.ift.CellProcessor;
+import org.supercsv.io.CsvMapReader;
+import org.supercsv.io.CsvMapWriter;
+import org.supercsv.io.ICsvMapWriter;
+import org.supercsv.prefs.CsvPreference;
 
 /**
  *
@@ -127,23 +135,77 @@ public class DB implements DBObject {
             
  
     }
-    
+ private String getDefault(String type)   {
+        switch (type) {
+            case "INT":
+                return "0";
+            case "FLOAT":
+                return "0.0";
+            case "DATE":
+                return "\"0000-00-00\"";
+            default:
+                return "";
+        }
+ }
     public void addColumn(String table, JSONObject column){
         JSONObject obj = readFile();
         JSONArray array = (JSONArray) obj.get("tablas");
         JSONArray nuevo = new JSONArray();
         Iterator<JSONObject> iterator = array.iterator();
+        List<String> listColumns = new LinkedList();
         while(iterator.hasNext()){
             JSONObject tabla = iterator.next();
             if(tabla.get("name").equals(table)){
                 JSONArray columnas = (JSONArray) tabla.get("columns");
                 columnas.add(column);
                 tabla.put("columns", columnas);
+                for(int i=0;i<columnas.size();i++){
+                    JSONObject temp = (JSONObject) columnas.get(i);
+                    listColumns.add((String) temp.get("name"));
+                }
+                    
             }
             nuevo.add(tabla);
         }
         obj.put("tablas",nuevo);
+        //agregar a archivo
+        CsvMapReader mapReader = null;
+        ICsvMapWriter mapWriter = null;
+        Table currTable = (Table) getTables().get(table);
+        String tempFile = currTable.physicalLocation()+".aux";
+        try{
+            mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
+            mapWriter = new CsvMapWriter(new FileWriter(tempFile), CsvPreference.STANDARD_PREFERENCE);
+            
+            // the header columns are used as the keys to the Map
+            final String[] header = mapReader.getHeader(true);
+            final String[] newHeader = listColumns.toArray(new String[listColumns.size()]);
+            final CellProcessor[] processors =  new CellProcessor[currTable.getColumns().size()];
+            final CellProcessor[] newprocessors =  new CellProcessor[currTable.getColumns().size()+1];
+            mapWriter.writeHeader(newHeader);
+            
+            Map<String, Object> rowMap;
+            //Mientras haya que leer
+            while( (rowMap = mapReader.read(header, processors)) != null ) {
+                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+                            mapReader.getRowNumber(), rowMap));
+                    rowMap.put((String) column.get("name"), getDefault((String) column.get("type")));
+                    mapWriter.write(rowMap, newHeader, newprocessors);
+            }
+            mapWriter.close();
+            mapReader.close();
+            //Borrar original y Cambiar archivo auxiliar por normal
+            File old = new File(currTable.physicalLocation());
+            old.delete();
+            File newfile = new File(tempFile);
+            newfile.renameTo(old);        }
+        catch(IOException e){
+            
+        }
+        
+        
         writeFile("src/db/"+name+".json", obj.toJSONString());
+        
         //agreagar a variable
         tables.get(table).getColumns().put((String) column.get("name"), column);
     }
@@ -189,6 +251,7 @@ public class DB implements DBObject {
         JSONObject obj = readFile();
         JSONArray array = (JSONArray) obj.get("tablas");
         Iterator<JSONObject> iterator = array.iterator();
+        List<String> listColumns = new LinkedList();
         while (iterator.hasNext()) {
             JSONObject tabla = iterator.next();
             if(tabla.get("name").equals(table)){
@@ -197,8 +260,10 @@ public class DB implements DBObject {
                 Iterator<JSONObject> iterator2 = columnas.iterator();
                 while(iterator2.hasNext()){
                     JSONObject columna = iterator2.next();
-                    if(!columna.get("name").equals(column))
+                    if(!columna.get("name").equals(column)){
                         nuevo.add(columna);
+                        listColumns.add((String) columna.get("name"));
+                    }
                 }
                 tabla.put("columns", nuevo);
             }
@@ -228,9 +293,45 @@ public class DB implements DBObject {
             constraints.put(table, nuevaLista);
         
         obj.put("constraints", newConstraints);
+        //agregar a archivo
+        CsvMapReader mapReader = null;
+        ICsvMapWriter mapWriter = null;
+        Table currTable = (Table) getTables().get(table);
+        String tempFile = currTable.physicalLocation()+".aux";
+        try{
+            mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
+            mapWriter = new CsvMapWriter(new FileWriter(tempFile), CsvPreference.STANDARD_PREFERENCE);
+            
+            // the header columns are used as the keys to the Map
+            final String[] header = mapReader.getHeader(true);
+            final String[] newHeader = listColumns.toArray(new String[listColumns.size()]);
+            final CellProcessor[] processors =  new CellProcessor[currTable.getColumns().size()];
+            final CellProcessor[] newprocessors =  new CellProcessor[currTable.getColumns().size()-1];
+            mapWriter.writeHeader(newHeader);
+            
+            Map<String, Object> rowMap;
+            //Mientras haya que leer
+            while( (rowMap = mapReader.read(header, processors)) != null ) {
+                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+                            mapReader.getRowNumber(), rowMap));
+                    rowMap.remove(column);
+                    mapWriter.write(rowMap, newHeader, newprocessors);
+            }
+            mapWriter.close();
+            mapReader.close();
+            //Borrar original y Cambiar archivo auxiliar por normal
+            File old = new File(currTable.physicalLocation());
+            old.delete();
+            File newfile = new File(tempFile);
+            newfile.renameTo(old);        }
+        catch(Exception e){
+            
+        }
+        
         writeFile("src/db/"+name+".json", obj.toJSONString());
        //quitarlo de la variable
         tables.get(table).getColumns().remove(column);
+        
     }
     
     public void renameTable(String oldID,String newID){
