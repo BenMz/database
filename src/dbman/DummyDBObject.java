@@ -14,6 +14,7 @@ import java.util.Map;
  * @author Jorge Lainfiesta 11142
  * @since Apr 30, 2014
  * @version 1
+ * @deprecated 
  */
 public class DummyDBObject implements DBObject {
     

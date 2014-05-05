@@ -9,12 +9,14 @@ package dbman;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.json.simple.JSONObject;
 
 /**
  * DummyMetaTable
  * @author Jorge Lainfiesta 11142
  * @since Apr 30, 2014
  * @version 1
+ * @deprecated 
  */
 public class DummyMetaTable implements MetaTable {
     private String name;
@@ -33,8 +35,9 @@ public class DummyMetaTable implements MetaTable {
     }
 
     @Override
-    public Map<String, String> getColumns() {
-        return columns;
+    public Map<String, JSONObject> getColumns() {
+        //return columns
+        return null;
     }
 
     @Override
