@@ -706,9 +706,8 @@ public class Visitante extends SQLBaseVisitor<Object>{
     }
 
     @Override
-    public Object visitColumn(SQLParser.ColumnContext ctx) {
-        visitChildren(ctx); 
-       return null;  //To change body of generated methods, choose Tools | Templates.
+    public Object visitColumn(SQLParser.ColumnContext ctx) { 
+       return ctx.getText();  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -986,7 +985,12 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
         }
        }
-       
+              String where = (String) visit(ctx.whereClause());
+        try {
+            System.out.println(dbm.select(columns,where,null,0));
+        } catch (ConstrainException ex) {
+            Logger.getLogger(Visitante.class.getName()).log(Level.SEVERE, null, ex);
+        }
        
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
@@ -1022,7 +1026,13 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitMulCol(SQLParser.MulColContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+             LinkedList lista = new LinkedList();
+       lista.push(ctx.columnItem().getText()); //agregar el id;
+       LinkedList result = (LinkedList) visitChildren(ctx);
+       Iterator it = result.iterator();
+       while(it.hasNext())
+           lista.push(it.next());
+       return lista;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -1100,7 +1110,10 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitSingleCol(SQLParser.SingleColContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+              LinkedList lista = new LinkedList();
+       lista.push(visit(ctx.columnItem())); //agregar el id;
+//       System.out.println(lista);
+       return lista;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -1110,7 +1123,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitSelectCol(SQLParser.SelectColContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+      return(visitChildren(ctx));  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
