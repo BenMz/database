@@ -23,8 +23,6 @@ import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 import org.json.simple.JSONObject;
-import org.supercsv.cellprocessor.constraint.NotNull;
-import org.supercsv.cellprocessor.constraint.UniqueHashCode;
 import org.supercsv.cellprocessor.ift.CellProcessor;
 import org.supercsv.io.CsvMapReader;
 import org.supercsv.io.CsvMapWriter;
@@ -55,7 +53,6 @@ public class DMLManager {
             if(!f.exists()) {
                 ICsvMapWriter mapWriter = null;
                 try {
-                        
                         //Prepare for writing
                         mapWriter = new CsvMapWriter(new FileWriter(table.physicalLocation()),
                                 CsvPreference.STANDARD_PREFERENCE);
@@ -86,6 +83,11 @@ public class DMLManager {
         }
     }
     
+    private void doneWithTables(){
+        currTables.clear();
+        table_aliases.clear();
+    }
+    
     /**
      * 
      * @param table
@@ -103,6 +105,7 @@ public class DMLManager {
      */
     public int existsColumn(String table, String col){
         int result = 0;
+        
         if(table != null){
             if(table_aliases.containsKey(table)){
                 table = table_aliases.get(table);
@@ -112,6 +115,7 @@ public class DMLManager {
                 result = 1;
             }
         }else {
+            
             for(Map.Entry<String, MetaTable> currTs : currTables.entrySet()){
                 if(currTs.getValue().getColumns().containsKey(col)){
                     result += 1;
@@ -175,20 +179,26 @@ public class DMLManager {
     
     private String getValType(String val){
         System.out.println("getValType: "+val);
-        if(val.matches("[0-9]+")){
+        if(val == null || val.equals("NULL") || val.equals("")){
+            return "NULL";
+        }else if(val.matches("[0-9]+")){
             return "INT";
         } else if(val.matches("[0-9]*\\.[0-9]*") && val.length()>1){
             return "FLOAT";
         } else if(val.matches("^(19|20)\\d\\d[\\-\\/.](0[1-9]|1[012])[\\-\\/.](0[1-9]|[12][0-9]|3[01])$")) {
             return "DATE";
-        } else {
+        } else if(val.startsWith("'") && val.endsWith("'") || val.startsWith("\"") && val.endsWith("\"")) {
             return "CHAR";
+        } else {
+            return "UNDEFINED";
         }
     }
     
     private String prepareValInsert(String coltype, String value){
         String valtype = this.getValType(value);
         if(coltype.equals(valtype)){
+            return value;
+        }else if((coltype.equals("CHAR") || coltype.equals("DATE")) && valtype.equals("NULL")){
             return value;
         }else if(coltype.equals("INT") && valtype.equals("FLOAT")){
             return value.split("\\.")[0];
@@ -230,6 +240,7 @@ public class DMLManager {
                 }
                 //Prepare to store in CSV
                 Map<String, String> newRow = new LinkedHashMap<>();
+                
                 for(int i = 0; i<columns.size(); i++){
                     String coltype = this.getColumnType(currTable.getName(), columns.get(i));
                     String valinsert = this.prepareValInsert(coltype, values.get(i));
@@ -239,7 +250,14 @@ public class DMLManager {
                     }else {
                         newRow.put(columns.get(i),valinsert);
                     }
-                    
+                }
+                //Check not null
+                Map<String, JSONObject> cols = currTable.getColumns();
+                for(String col : cols.keySet()){
+                    if(newRow.get(col) == null && cols.get(col).get("notNull").equals("true")){
+                        throw new ConstrainException(String.format("Insert violates NOT NULL constraint on column '%s' of table '%s'.", 
+                                col,  currTable.getName()));
+                    }
                 }
                 
                 ICsvMapWriter mapWriter = null;
@@ -261,6 +279,7 @@ public class DMLManager {
                 }
             }
         }
+        doneWithTables();
         return insertedRows;
     }
     /**
@@ -318,8 +337,8 @@ public class DMLManager {
         catch (IOException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
+        doneWithTables();
         return rowsDeleted;
-                
     }
     
     public int update(List<String> values, List<String> columns, String validation) throws ConstrainException{
@@ -362,6 +381,14 @@ public class DMLManager {
                                     throw new ConstrainException(String.format("Incompatible types: column '%s' is type %s and '%s' is %s", columns.get(i), 
                                             this.getColumnType(currTable.getName(), columns.get(i)), values.get(i), this.getValType(values.get(i))));
                                 }else {
+                                    //Check not null
+                                    Map<String, JSONObject> cols = currTable.getColumns();
+                                    for(String col : cols.keySet()){
+                                        if(rowMap.get(col) == null && cols.get(col).get("notNull").equals("true")){
+                                            throw new ConstrainException(String.format("Insert violates NOT NULL constraint on column '%s' of table '%s'.", 
+                                                    col,  currTable.getName()));
+                                        }
+                                    }
                                     rowMap.put(columns.get(i),valinsert);
                                 }
                             }else {
@@ -378,12 +405,97 @@ public class DMLManager {
             old.delete();
             File newfile = new File(tempFile);
             newfile.renameTo(old);
-                
+            
         }
         catch (IOException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
+        doneWithTables();
         return updatedRows;
+    }
+    
+    /**
+     * Returns a list of Map<String, Object>
+     * @param columns already validated columns
+     * @param validation
+     * @param orderBy a column to order by
+     * @param orderIn 0 for don't car, 1 for AC, 2 for DESC
+     */
+    public List<Map<String, Object>> select(List<String> columns, String validation, String orderBy, int orderIn) throws ConstrainException{
+        LinkedList<LinkedList<Map<String, Object>>> partial_results = new LinkedList<>();
+        System.out.println(String.format("SELECT: %s", this.currTables.keySet()));
+        for(MetaTable selTable : this.currTables.values()){
+            System.out.println("Select");
+            System.out.println(selTable.getName());
+            //Juntamos header para lectura parcial
+            List<String> partial_header  = new LinkedList<>();
+            for(String col : columns){
+                if(this.existsColumn(selTable.getName(), col) == 1){
+                    System.out.println(col);
+                    partial_header.add(col);
+                }else if(this.existsColumn(selTable.getName(), col) == 2){
+                    throw new ConstrainException(String.format("Column %s is ambiguous.", col));
+                }
+            }
+            System.out.println(String.format("Partial header: %s", partial_header));
+            
+            LinkedList<Map<String, Object>> partial_result = new LinkedList<>();
+            //Leemos del archivo
+            ICsvMapReader mapReader;
+            try {
+                MetaTable currTable = getCurrentTable();
+                mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
+                
+                // the header columns are used as the keys to the Map
+                final String[] header = mapReader.getHeader(true);
+                final CellProcessor[] processors =  new CellProcessor[currTable.getColumns().size()];
+                Map<String, Object> rowMap;
+                //Mientras haya que leer
+                while( (rowMap = mapReader.read(header, processors)) != null ) {
+                        System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+                                mapReader.getRowNumber(), rowMap));
+                        //Preparamos objeto como lo espera el evalWhere
+                        Map<String, Map<String, Object>> data = new HashMap<>();
+                        data.put(currTable.getName(), rowMap);
+                        //Si se cumple con el where
+                        if(validation == null || this.evalWhere(validation, data)){
+                            Map<String, Object> selMap = new HashMap<>();
+                            System.out.println(String.format("\nFull: %s", rowMap));
+                            for(String fh : header){
+                                if(partial_header.contains(fh)){
+                                    selMap.put(fh, rowMap.get(fh));
+                                }
+                            }
+                            partial_result.add(selMap);
+                        }
+                }
+                mapReader.close();
+                System.out.println(String.format("Partial: %s", partial_result));
+                partial_results.add(partial_result);
+
+            }
+            catch (IOException ex) {
+                Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        
+        }
+        LinkedList<Map<String, Object>> result = new LinkedList<>();
+        result.addAll(partial_results.get(0));
+        if(partial_results.size() > 1){
+            for(int i = 0; i < partial_results.get(0).size(); i++){
+                Map<String, Object> crossedRow = new LinkedHashMap<>();
+                crossedRow.putAll(partial_results.get(0).get(i));
+                
+                for(int j = 1; j < partial_results.get(i).size(); j++){
+                    for(int k = 0; k < partial_results.get(j).size(); k++){
+                        crossedRow.putAll(partial_results.get(j).get(k));
+                    }
+                }
+            }
+        }
+
+        doneWithTables();
+        return result;
     }
     
     /**
@@ -443,23 +555,27 @@ public class DMLManager {
         }
     }
     
+    
     public static void main(String[] args){
-        DMLManager dbm = new DMLManager(new DB("test"));
-        dbm.workWithTables("prueba2");
+        DMLManager dbm = new DMLManager(new DB("foo"));
+        dbm.workWithTables("t1");
         
         List<String> cols = new LinkedList<>();
-        cols.add("d");
-        cols.add("b");
+        cols.add("key");
+        //cols.add("b");
         
         List<String> vals = new LinkedList<>();
-        vals.add("15.22");
-        vals.add("14");
+        vals.add("18.22");
+        vals.add("");
         
         
         try {
-            dbm.update(vals, cols, null);
+            //dbm.insert(vals, cols);
+            //dbm.update(vals, cols, null);
             //dbm.delete("{MMM.t} < 3");
             //dbm.update(cols, vals, "{a} > 2");
+            
+            dbm.select(cols, null, null, 0);
         } catch (ConstrainException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
