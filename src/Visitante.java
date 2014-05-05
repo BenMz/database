@@ -470,7 +470,12 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitSingleTable(SQLParser.SingleTableContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       HashMap lista = new HashMap();
+       if(ctx.idMember(1)==null)
+           lista.put(ctx.idMember(0).getText(), null);     
+       else
+           lista.put(ctx.idMember(0).getText(), ctx.idMember(1));
+       return lista;
     }
 
     @Override
@@ -702,7 +707,8 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitColumn(SQLParser.ColumnContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        visitChildren(ctx); 
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -760,7 +766,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitFromClause(SQLParser.FromClauseContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       return(visitChildren(ctx)); 
     }
 
     @Override
@@ -891,7 +897,17 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitMulTable(SQLParser.MulTableContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       HashMap lista = new HashMap();
+       if(ctx.idMember(1)==null)
+           lista.put(ctx.idMember(0).getText(), null);     
+       else
+           lista.put(ctx.idMember(0).getText(), ctx.idMember(1));
+       
+       HashMap<String,String> result = (HashMap) visitChildren(ctx);
+       for(Map.Entry pair : result.entrySet()){
+           lista.put(pair.getKey(), pair.getValue());
+       }
+       return lista;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -927,7 +943,52 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitSelectStm(SQLParser.SelectStmContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       if(workingDB==null){
+           mensajes = "Not using any database";
+           all.add(mensajes);
+           return -1;
+       }
+
+       DMLManager dbm = new DMLManager(workingDB);
+       Map<String,String> listTables = null;
+       try{
+           listTables = (Map<String,String>) visit(ctx.fromClause());
+       }catch(Exception e){
+           mensajes = "Error in tables in select: "+e.getMessage();
+           all.add(mensajes);
+           return -1;
+       }
+       
+       String[] tables = new String[listTables.size()];
+       int i = 0;
+       for(Map.Entry table: listTables.entrySet()){
+           if(!workingDB.getTables().containsKey(table.getKey())){
+               mensajes = "Table "+table.getKey()+" doesn't exist";
+               all.add(mensajes);
+               return -1;
+           }
+           tables[i]=table.getKey().toString();
+           i++;
+       }
+       dbm.workWithTables(tables);
+       
+       List<String> columns = null;
+       if(ctx.columnas.getText().equals("*")){
+           for(String table: tables){
+               Table tabla = (Table) workingDB.getTables().get(table);
+               columns.addAll(tabla.getAllCol());
+           }
+       }
+       else{
+        try{
+            columns = (List<String>) visit(ctx.columns());
+        }catch(Exception e){
+
+        }
+       }
+       
+       
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override

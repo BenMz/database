@@ -35,6 +35,14 @@ public class Table implements MetaTable {
     public void setColumns(HashMap<String, JSONObject> columns){
         this.columns = columns;
     }
+    
+    public List<String> getAllCol(){
+        List<String> result = new LinkedList();
+        for(Map.Entry<String,JSONObject> pair: this.columns.entrySet()){
+            result.add(pair.getKey());
+        }
+        return result;
+    }
 
     public void setName(String name){
         this.name = name;

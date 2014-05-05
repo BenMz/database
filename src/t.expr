@@ -1,3 +1,8 @@
 USE DATABASE foo;
-ALTER TABLE t1 ADD COLUMN name CHAR(2)
+CREATE TABLE t2 (
+    z INT,
+    y FLOAT,
+    x DATE NOT NULL
+
+);
 
