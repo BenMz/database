@@ -22,6 +22,7 @@ import java.util.regex.Pattern;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
+import org.json.simple.JSONObject;
 import org.supercsv.cellprocessor.constraint.NotNull;
 import org.supercsv.cellprocessor.constraint.UniqueHashCode;
 import org.supercsv.cellprocessor.ift.CellProcessor;
@@ -128,16 +129,21 @@ public class DMLManager {
      * @return the type as string, null if does not exists, and if col was ambiguous the type of the last found
      */
     public String getColumnType(String table, String col){
-        String result = null;
+        JSONObject result = this.getColumn(table, col);
+        return (result == null) ? null : (String) result.get("type");
+    }
+    
+    public JSONObject getColumn(String table, String col){
+        JSONObject result = null;
         if(table != null){
             if(table_aliases.containsKey(table)){
                 table = table_aliases.get(table);
             }
-            result = (String) this.currTables.get(table).getColumns().get(col).get("name");
+            result = this.currTables.get(table).getColumns().get(col);
         }else {
             for(Map.Entry<String, MetaTable> currTs : currTables.entrySet()){
                 if(currTs.getValue().getColumns().containsKey(col)){
-                    result = (String) currTs.getValue().getColumns().get(col).get("name");
+                    result = currTs.getValue().getColumns().get(col);
                 }
             }
         }
@@ -167,13 +173,39 @@ public class DMLManager {
         return currTable;
     }
     
+    private String getValType(String val){
+        System.out.println("getValType: "+val);
+        if(val.matches("[0-9]+")){
+            return "INT";
+        } else if(val.matches("[0-9]*\\.[0-9]*") && val.length()>1){
+            return "FLOAT";
+        } else if(val.matches("^(19|20)\\d\\d[\\-\\/.](0[1-9]|1[012])[\\-\\/.](0[1-9]|[12][0-9]|3[01])$")) {
+            return "DATE";
+        } else {
+            return "CHAR";
+        }
+    }
+    
+    private String prepareValInsert(String coltype, String value){
+        String valtype = this.getValType(value);
+        if(coltype.equals(valtype)){
+            return value;
+        }else if(coltype.equals("INT") && valtype.equals("FLOAT")){
+            return value.split("\\.")[0];
+        } else if(coltype.equals("FLOAT") && valtype.equals("INT")){
+            return value+".00";
+        }else {
+            return null;
+        }
+    }
+    
     /**
      * Assumes columns are validated and values are type validated.
      * @param columns
      * @param values
      * @throws ConstrainException 
      */
-    public void insert(List<String> columns, List<String> values) throws ConstrainException{
+    public void insert(List<String> values, List<String> columns) throws ConstrainException{
         //TODO: check contrains
         if(this.currTables.size() != 1){
             throw new ConstrainException("Invalid working table: "+this.currTables.keySet());
@@ -182,20 +214,30 @@ public class DMLManager {
                 throw new ConstrainException("Mismatch in number of columns and values: ("+columns+")  "+values);
             }else {
                 MetaTable currTable = this.getCurrentTable();
-                //Locate phycial file
+                //Locate physical file
                 String fileURL = currTable.physicalLocation();
+                System.out.println(String.format("Tname: %s, cols: %s", currTable.getName(), currTable.getColumns()));
                 String [] header = currTable.getColumns().keySet().toArray(new String[currTable.getColumns().keySet().size()]);
                 
+                //If it's an implicit column list, we assign them from the originals
                 if(columns == null){
                     columns = new LinkedList<>();
-                    for(int i = 0; i<values.size(); i ++ ){
+                    for(int i = 0; i<values.size(); i++){
                         columns.add(header[i]);
                     }
                 }
                 //Prepare to store in CSV
                 Map<String, String> newRow = new LinkedHashMap<>();
                 for(int i = 0; i<columns.size(); i++){
-                    newRow.put(columns.get(i), values.get(i));
+                    String coltype = this.getColumnType(currTable.getName(), columns.get(i));
+                    String valinsert = this.prepareValInsert(coltype, values.get(i));
+                    if(valinsert == null){
+                        throw new ConstrainException(String.format("Incompatible types: column '%s' is type %s and '%s' is %s", columns.get(i), 
+                                this.getColumnType(currTable.getName(), columns.get(i)), values.get(i), this.getValType(values.get(i))));
+                    }else {
+                        newRow.put(columns.get(i),valinsert);
+                    }
+                    
                 }
                 
                 ICsvMapWriter mapWriter = null;
@@ -269,7 +311,7 @@ public class DMLManager {
 
     }
     
-    public void update(List<String> columns, List<String> values, String validation) throws ConstrainException{
+    public void update(List<String> values, List<String> columns, String validation) throws ConstrainException{
         if(columns.size() != values.size()){
             throw new ConstrainException(String.format("Values passed (%s) do not corresond to the specified columns (%s).", columns.size(), values.size()));
         }
@@ -302,7 +344,14 @@ public class DMLManager {
                         //Cambiamos los valores de la file para actualizar
                         for(int i = 0; i<columns.size(); i++){
                             if(this.existsColumn(currTable.getName(), columns.get(i))==1){
-                                rowMap.put(columns.get(i), values.get(i));
+                                String coltype = this.getColumnType(currTable.getName(), columns.get(i));
+                                String valinsert = this.prepareValInsert(coltype, values.get(i));
+                                if(valinsert == null){
+                                    throw new ConstrainException(String.format("Incompatible types: column '%s' is type %s and '%s' is %s", columns.get(i), 
+                                            this.getColumnType(currTable.getName(), columns.get(i)), values.get(i), this.getValType(values.get(i))));
+                                }else {
+                                    rowMap.put(columns.get(i),valinsert);
+                                }
                             }else {
                                 throw new ConstrainException(String.format("Columns '%s' does not exists on table '%s'", columns.get(i), currTable.getName()));
                             }
@@ -382,20 +431,22 @@ public class DMLManager {
     }
     
     public static void main(String[] args){
-        DMLManager dbm = new DMLManager(new DummyDBObject());
-        dbm.workWithTables("ABC");
+        DMLManager dbm = new DMLManager(new DB("test"));
+        dbm.workWithTables("prueba2");
         
         List<String> cols = new LinkedList<>();
+        cols.add("a");
         cols.add("b");
         
         List<String> vals = new LinkedList<>();
-        vals.add("adios");
+        vals.add("15.22");
+        vals.add("14");
         
         
         try {
-            //dbm.insert(cols, vals);
+            dbm.update(vals, cols, null);
             //dbm.delete("{MMM.t} < 3");
-            dbm.update(cols, vals, "{a} > 2");
+            //dbm.update(cols, vals, "{a} > 2");
         } catch (ConstrainException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }

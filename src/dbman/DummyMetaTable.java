@@ -16,6 +16,7 @@ import org.json.simple.JSONObject;
  * @author Jorge Lainfiesta 11142
  * @since Apr 30, 2014
  * @version 1
+ * @deprecated 
  */
 public class DummyMetaTable implements MetaTable {
     private String name;
