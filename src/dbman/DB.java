@@ -77,7 +77,7 @@ public class DB implements DBObject {
             if(!constraints.containsKey(constraint.get("table")))
                 constraints.put((String) constraint.get("table"), new LinkedList());
             constraints.get(constraint.get("table")).add(constraint);
-            if(constraint.get("type").equals("primary")){
+            if(constraint.get("type").equals("primary")){ //asignar las primary key
                Table tabla =  (Table) this.tables.get(constraint.get("table"));
                tabla.setPK((JSONArray) constraint.get("columns"));
             }

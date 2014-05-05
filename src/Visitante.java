@@ -1,5 +1,7 @@
 
+import dbman.ConstrainException;
 import dbman.DB;
+import dbman.DMLManager;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -8,8 +10,14 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.swing.JOptionPane;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
+import org.supercsv.io.CsvMapWriter;
+import org.supercsv.io.ICsvMapWriter;
+import org.supercsv.prefs.CsvPreference;
 
 /*
  * To change this license header, choose License Headers in Project Properties.
@@ -27,13 +35,20 @@ public class Visitante extends
     String mensajes="";
     DB workingDB = null;
     HashMap<String, LinkedList> columns ; //se usa al momento de crear tabla
+    LinkedList columnOrder;
     HashMap<String, JSONObject> constraints ; //se usa al momento de crear tabla
     String alterTable = null;
     LinkedList<LinkedList> alterOperations = new LinkedList();
 
     @Override
     public Object visitExpression(SQLParser.ExpressionContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+    
+      String exp = (String) visit(ctx.andExp());
+        if(ctx.getChild(1)!=null){
+           exp+="||"+visit(ctx.expression());
+        }
+        
+       return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -112,7 +127,8 @@ public class Visitante extends
 
     @Override
     public Object visitGreaterEqual(SQLParser.GreaterEqualContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        String exp = visit(ctx.addExp(0))+">="+visit(ctx.addExp(1));
+        return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -122,17 +138,19 @@ public class Visitante extends
 
     @Override
     public Object visitMult(SQLParser.MultContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       return visit(ctx.negateExp())+"*"+visit(ctx.multExp());
     }
 
     @Override
     public Object visitLower(SQLParser.LowerContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        String exp = visit(ctx.addExp(0))+">="+visit(ctx.addExp(1));
+        return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
     public Object visitGreater(SQLParser.GreaterContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+               String exp = visit(ctx.addExp(0))+">"+visit(ctx.addExp(1));
+       return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -164,13 +182,22 @@ public class Visitante extends
 
     @Override
     public Object visitSuma(SQLParser.SumaContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       
+       return visit(ctx.multExp())+"+"+visit(ctx.addExp());  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
     public Object visitNotExp(SQLParser.NotExpContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       String exp; 
+       
+        if(ctx.not!=null)           
+           exp = "!("+visit(ctx.getChild(1))+")";
+        else
+            exp = ""+ visit(ctx.getChild(0));
+        
+       return exp;  //To change body of generated methods, choose Tools | Templates.
     }
+    
 
     @Override
     public Object visitDeleteStm(SQLParser.DeleteStmContext ctx) {
@@ -297,8 +324,16 @@ public class Visitante extends
 
     @Override
     public Object visitMulExp(SQLParser.MulExpContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       LinkedList lista = new LinkedList();
+       lista.push(ctx.expression().getText()); //agregar el id;
+       LinkedList result = (LinkedList) visitChildren(ctx);
+       Iterator it = result.iterator();
+       while(it.hasNext())
+           lista.push(it.next());
+       return lista;  //To change body of generated methods, choose Tools | Templates.
     }
+    
+
 
     @Override
     public Object visitNada(SQLParser.NadaContext ctx) {
@@ -328,7 +363,17 @@ public class Visitante extends
 
     @Override
     public Object visitValue(SQLParser.ValueContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        
+        if(ctx.getChild(0).equals("(")) //si es otra expresion
+            return visit(ctx.expression());
+        if(ctx.ID(0)!=null){ //si es un ID
+            if(ctx.ID(1)!=null) //si es un ID.ID
+                return "{"+ctx.ID(0).getText()+"."+ctx.ID(1).getText()+"}";
+            else
+                return "{"+ctx.ID(0)+"}";
+        }
+       
+       return ctx.getText();  
     }
 
     @Override
@@ -398,7 +443,8 @@ public class Visitante extends
 
     @Override
     public Object visitEquals(SQLParser.EqualsContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        String exp = visit(ctx.addExp(0))+"=="+visit(ctx.addExp(1));
+       return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -415,7 +461,8 @@ public class Visitante extends
 
     @Override
     public Object visitNotEquals(SQLParser.NotEqualsContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        String exp = visit(ctx.addExp(0))+"!="+visit(ctx.addExp(1));
+       return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -425,7 +472,8 @@ public class Visitante extends
 
     @Override
     public Object visitLike(SQLParser.LikeContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       String exp = visit(ctx.addExp())+".contains(\""+ctx.STRING().getText()+"\"";
+       return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -437,6 +485,7 @@ public class Visitante extends
     @Override
     public Object visitCreateStm(SQLParser.CreateStmContext ctx) {
        columns = new HashMap ();
+       columnOrder = new LinkedList();
        constraints = new HashMap ();
      if(workingDB.getTables().containsKey(ctx.ID().getText())){
          mensajes = "Table "+ctx.ID().getText()+" already exists";
@@ -451,7 +500,8 @@ public class Visitante extends
        newTable.put("name", ctx.ID().getText());
        JSONArray columnas = new JSONArray();
       
-       Iterator<String> keys = columns.keySet().iterator();
+       Iterator<String> keys = columnOrder.descendingIterator();
+       
         while (keys.hasNext()) {
             
             String key = keys.next();
@@ -477,18 +527,39 @@ public class Visitante extends
         
         
         workingDB.createTable(newTable,arrayConstraints);
+	try {
+ 
+		FileWriter file = new FileWriter("src/db/"+workingDB.getName()+"/"+ctx.ID().getText()+".csv");
+		
+                 ICsvMapWriter mapWriter = null;
+                 mapWriter = new CsvMapWriter(file,
+                        CsvPreference.STANDARD_PREFERENCE);
+                 String[] header = new String[columnas.size()];
+                 for(int i=0;i<columnas.size();i++){
+                     JSONObject temp = (JSONObject) columnas.get(i);
+                     header[i]=(String) temp.get("name");
+                 }
+                 mapWriter.writeHeader(header);
+                 mapWriter.close();
+                 
+ 
+	} catch (IOException e) {
+		e.printStackTrace();
+	}  
        
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
     public Object visitLowerEqual(SQLParser.LowerEqualContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        String exp = visit(ctx.addExp(0))+">="+visit(ctx.addExp(1));
+        return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
     public Object visitExp(SQLParser.ExpContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       
+        return visit(ctx.addExp());  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -537,7 +608,9 @@ public class Visitante extends
 
     @Override
     public Object visitNotNull(SQLParser.NotNullContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       
+       String exp = visit(ctx.value())+"!=null";
+       return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -582,12 +655,15 @@ public class Visitante extends
         }
         workingDB.dropTable(ctx.ID().getText());
         mensajes = "Table "+ctx.ID().getText()+" deleted";
+        File f = new File("src/db/"+workingDB.getName()+"/"+ctx.ID().getText()+".csv");
+        f.delete();
         return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
     public Object visitEmptyMult(SQLParser.EmptyMultContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       
+        return(visit(ctx.negateExp()));
     }
 
     @Override
@@ -601,11 +677,14 @@ public class Visitante extends
        }
        
        //ver si no se esta usando
-       if(workingDB.getName().equals(ctx.ID().getText())){
+       if(workingDB!=null && workingDB.getName().equals(ctx.ID().getText())){
            mensajes = "La BD "+ctx.ID().getText()+" se esta usando";
        }
-      // TODO: Hay que hacer el prompt si esta seguro de borrarlo 
-       
+      // prompt si esta seguro de borrarlo 
+      int prompt = JOptionPane.showConfirmDialog(null, "Esta seguro que quiere borrar la base de datos "+ctx.ID().getText()+"?","Borrar?",  JOptionPane.YES_NO_OPTION);
+      if(prompt!=JOptionPane.YES_OPTION)
+          return null;
+      
        String[]entries = f.list();
        //borrar todos los archivos 
         for(String s: entries){
@@ -621,7 +700,8 @@ public class Visitante extends
 
     @Override
     public Object visitIsNull(SQLParser.IsNullContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       String exp = visit(ctx.value())+"==null";
+       return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -651,14 +731,29 @@ public class Visitante extends
 	} catch (IOException e) {
 		e.printStackTrace();
 	}  
-
        mensajes="Se ha creado la base de datos";
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
     public Object visitInsertStm(SQLParser.InsertStmContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       if(workingDB==null){
+           mensajes = "Not using any database";
+           return -1;
+       }
+       DMLManager dbm = new DMLManager(workingDB);
+       dbm.workWithTables(ctx.ID().getText());
+       LinkedList columns = (LinkedList) visit(ctx.idList());
+       LinkedList values = (LinkedList) visit(ctx.exprList());
+//       System.out.println(values);
+        try {
+            dbm.insert(values, columns);
+        } catch (ConstrainException ex) {
+           mensajes = "Unable to insert "+ex.getMessage();
+           return -1;
+        }
+       
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -668,7 +763,7 @@ public class Visitante extends
 
     @Override
     public Object visitDiv(SQLParser.DivContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        return visit(ctx.negateExp())+"/"+visit(ctx.multExp());
     }
 
     @Override
@@ -708,7 +803,8 @@ public class Visitante extends
 
     @Override
     public Object visitEmptyAdd(SQLParser.EmptyAddContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+    
+        return visit(ctx.multExp());
     }
 
     @Override
@@ -818,7 +914,8 @@ public class Visitante extends
 
     @Override
     public Object visitNegate(SQLParser.NegateContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        
+        return visit(ctx.value());
     }
 
     @Override
@@ -838,12 +935,15 @@ public class Visitante extends
 
     @Override
     public Object visitSingleExp(SQLParser.SingleExpContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       LinkedList lista = new LinkedList();
+       lista.push(visit(ctx.expression())); //agregar el id;
+//       System.out.println(lista);
+       return lista;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
     public Object visitNotNegate(SQLParser.NotNegateContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+      return visit(ctx.value());
     }
 
     @Override
@@ -880,6 +980,7 @@ public class Visitante extends
             datos.add(Integer.parseInt(ctx.type().NUM().getText()));
        
         columns.put(name, datos);
+        columnOrder.add(name);
         
 
        return null;  //To change body of generated methods, choose Tools | Templates.
@@ -892,7 +993,14 @@ public class Visitante extends
 
     @Override
     public Object visitAndExp(SQLParser.AndExpContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       
+       String exp = (String) visit(ctx.notExp());
+       
+        if(ctx.getChild(1)!=null){
+           exp+="&&"+visit(ctx.andExp());
+        }
+        
+       return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -909,7 +1017,7 @@ public class Visitante extends
 
     @Override
     public Object visitResta(SQLParser.RestaContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       return visit(ctx.multExp())+"-"+visit(ctx.addExp());
     }
 
     public String getMensajes(){

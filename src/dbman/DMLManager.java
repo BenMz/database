@@ -435,7 +435,7 @@ public class DMLManager {
         dbm.workWithTables("prueba2");
         
         List<String> cols = new LinkedList<>();
-        cols.add("a");
+        cols.add("d");
         cols.add("b");
         
         List<String> vals = new LinkedList<>();

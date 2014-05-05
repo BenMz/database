@@ -1,7 +1,2 @@
-USE DATABASE test;
-DROP TABLE prueba2;
-CREATE TABLE prueba2 (
-	a1 INT,
-	b2 FLOAT NOT NULL,
-	c3 CHAR(255),
-	d4 DATE);
+USE DATABASE foo;
+INSERT INTO t1 (key,other) VALUES(1,100)
