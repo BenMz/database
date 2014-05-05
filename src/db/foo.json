@@ -1,1 +1,53 @@
-{"tablas":[{"name":"t1","columns":[{"name":"key","type":"INT","notNull":"false"},{"name":"other","type":"INT","notNull":"false"}],"records":3}],"constraints":{"pk":{"name":"pk","columns":["key"],"table":"t1","type":"primary"}},"records":3}
+{
+  "tablas": [
+    {
+      "name": "t1",
+      "columns": [
+        {
+          "name": "key",
+          "notNull": "false",
+          "type": "CHAR",
+          "size": "5"
+        },
+        {
+          "name": "other",
+          "notNull": "false",
+          "type": "INT"
+        }
+      ],
+      "records": 3
+    },
+    {
+      "name": "t2",
+      "columns": [
+        {
+          "name": "z",
+          "notNull": "false",
+          "type": "INT"
+        },
+        {
+          "name": "y",
+          "notNull": "false",
+          "type": "FLOAT"
+        },
+        {
+          "name": "x",
+          "notNull": "true",
+          "type": "DATE"
+        }
+      ],
+      "records": 0
+    }
+  ],
+  "constraints": {
+    "pk": {
+      "name": "pk",
+      "columns": [
+        "key"
+      ],
+      "table": "t1",
+      "type": "primary"
+    }
+  },
+  "records": 3
+}

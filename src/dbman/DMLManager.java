@@ -209,6 +209,50 @@ public class DMLManager {
         }
     }
     
+    private boolean isUnique(List<String> valcheck, List<String> columnCheck){
+        System.out.println(String.format("valcheck: %s, columnCheck: %s", valcheck, columnCheck));
+        ICsvMapReader mapReader;
+        LinkedList<String> hashes = new LinkedList<>();
+        try {
+            MetaTable currTable = getCurrentTable();
+            mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
+            
+            // the header columns are used as the keys to the Map
+            final String[] header = mapReader.getHeader(true);
+            //columnCheck.toArray(new String[columnCheck.size()]);
+            final CellProcessor[] processors =  new CellProcessor[header.length];
+            
+            System.out.println(String.format("Header size: %s  Processor size: %s", header.length, processors.length));
+            
+            Map<String, Object> rowMap;
+            //Mientras haya que leer
+            while( (rowMap = mapReader.read(header, processors)) != null ) {
+                    
+                    String pk = "";
+                    for(String pk_col : columnCheck){
+                        System.out.println(String.format("pk_col: %s  rop: %s", pk_col, rowMap.get(pk_col)));
+                        pk += rowMap.get(pk_col);
+                    }
+                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s, pk=%s, pkhash=%s", mapReader.getLineNumber(),
+                            mapReader.getRowNumber(), rowMap, pk, pk.hashCode()));
+                    hashes.add(pk);
+            }
+            mapReader.close();
+            String newkey = "";
+            for(String val : valcheck){
+                newkey += val;
+            }
+            if(hashes.contains(newkey)){
+                return true;
+            }
+
+        }
+        catch (IOException ex) {
+            Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return false;
+    }
+    
     /**
      * Assumes columns are validated and values are type validated.
      * @param columns
@@ -242,13 +286,20 @@ public class DMLManager {
                 Map<String, String> newRow = new LinkedHashMap<>();
                 
                 for(int i = 0; i<columns.size(); i++){
-                    String coltype = this.getColumnType(currTable.getName(), columns.get(i));
+                    JSONObject column = this.getColumn(currTable.getName(), columns.get(i));
+                    String coltype = column.get("type").toString();
                     String valinsert = this.prepareValInsert(coltype, values.get(i));
                     if(valinsert == null){
                         throw new ConstrainException(String.format("Incompatible types: column '%s' is type %s and '%s' is %s", columns.get(i), 
                                 this.getColumnType(currTable.getName(), columns.get(i)), values.get(i), this.getValType(values.get(i))));
                     }else {
-                        newRow.put(columns.get(i),valinsert);
+                        System.out.println("CHAR SIZE "+Integer.parseInt(column.get("size").toString()) +"  "+this.getValType(valinsert) );
+                        if(this.getValType(valinsert).equals("CHAR") && Integer.parseInt(column.get("size").toString()) < valinsert.length()-2){
+                            throw new ConstrainException(String.format("Invalid CHAR size %s for columns '%s'", valinsert.length()-2, column.get("name").toString()));
+                        }else {
+                            newRow.put(columns.get(i),valinsert);
+                        }
+                        
                     }
                 }
                 //Check not null
@@ -258,11 +309,22 @@ public class DMLManager {
                         throw new ConstrainException(String.format("Insert violates NOT NULL constraint on column '%s' of table '%s'.", 
                                 col,  currTable.getName()));
                     }
+                    if(currTable.getPK().contains(col)){
+                        throw new ConstrainException(String.format("Insert violates PRIMARY KEY constraint on column '%s', cannot be NULL", col));
+                    }
+                }
+                
+                //Check PK
+                List<String> pk_vals = new LinkedList<>();
+                for(String pkey : currTable.getPK()){
+                    pk_vals.add(newRow.get(pkey));
+                }
+                if(isUnique(pk_vals, currTable.getPK())){
+                    throw new ConstrainException(String.format("Invalid value '%s' for PRIMARY KEY %s on INSERT", pk_vals, currTable.getPK()));
                 }
                 
                 ICsvMapWriter mapWriter = null;
-                try {
-                        
+                try {   
                         //Prepare for writing
                         mapWriter = new CsvMapWriter(new FileWriter(fileURL, true),
                                 CsvPreference.STANDARD_PREFERENCE);
@@ -565,17 +627,17 @@ public class DMLManager {
         //cols.add("b");
         
         List<String> vals = new LinkedList<>();
-        vals.add("18.22");
         vals.add("");
+        //vals.add("");
         
         
         try {
-            //dbm.insert(vals, cols);
+            dbm.insert(vals, cols);
             //dbm.update(vals, cols, null);
             //dbm.delete("{MMM.t} < 3");
             //dbm.update(cols, vals, "{a} > 2");
             
-            dbm.select(cols, null, null, 0);
+            //dbm.select(cols, null, null, 0);
         } catch (ConstrainException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
