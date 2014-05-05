@@ -400,6 +400,74 @@ public class DMLManager {
     }
     
     /**
+     * Returns a list of Map<String, Object>
+     * @param columns already validated columns
+     * @param validation
+     * @param orderBy a column to order by
+     * @param orderIn 0 for don't car, 1 for AC, 2 for DESC
+     */
+    public List<Map<String, Object>> select(List<String> columns, String validation, String orderBy, int orderIn) throws ConstrainException{
+        LinkedList<Map<String, Object>> result = new LinkedList<>();
+        
+        LinkedList<LinkedList<Map<String, Object>>> partial_results = new LinkedList<>();
+        
+        for(MetaTable selTable : this.currTables.values()){
+            System.out.println(selTable.getName());
+            //Juntamos header para lectura parcial
+            List<String> partial_header  = new LinkedList<>();
+            for(String col : columns){
+                if(this.existsColumn(selTable.getName(), col) == 1){
+                    partial_header.add(col);
+                }else if(this.existsColumn(selTable.getName(), col) == 2){
+                    throw new ConstrainException(String.format("Column %s is ambiguous.", col));
+                }
+            }
+            System.out.println(String.format("Partial header: %s", partial_header));
+            
+            LinkedList<Map<String, Object>> partial_result = new LinkedList<>();
+            //Leemos del archivo
+            ICsvMapReader mapReader;
+            try {
+                MetaTable currTable = getCurrentTable();
+                mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
+                
+                // the header columns are used as the keys to the Map
+                final String[] header = mapReader.getHeader(true);
+                final CellProcessor[] processors =  new CellProcessor[currTable.getColumns().size()];
+                Map<String, Object> rowMap;
+                //Mientras haya que leer
+                while( (rowMap = mapReader.read(header, processors)) != null ) {
+                        System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+                                mapReader.getRowNumber(), rowMap));
+                        //Preparamos objeto como lo espera el evalWhere
+                        Map<String, Map<String, Object>> data = new HashMap<>();
+                        data.put(currTable.getName(), rowMap);
+                        //Si se cumple con el where
+                        if(validation == null || this.evalWhere(validation, data)){
+                            Map<String, Object> selMap = new HashMap<>();
+                            System.out.println(String.format("\nFull: %s", rowMap));
+                            for(String fh : header){
+                                if(partial_header.contains(fh)){
+                                    selMap.put(fh, rowMap.get(fh));
+                                }
+                            }
+                            System.out.println(String.format("Partial: %s", selMap));
+                            partial_result.add(rowMap);
+                        }
+                }
+                mapReader.close();
+
+            }
+            catch (IOException ex) {
+                Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        
+        }
+        doneWithTables();
+        return result;
+    }
+    
+    /**
      * Evaluates a expression according to the API. It evaluates the expression
      * by check the types 
      * @param expr according to the API with full columns name in complete
@@ -456,6 +524,7 @@ public class DMLManager {
         }
     }
     
+    
     public static void main(String[] args){
         DMLManager dbm = new DMLManager(new DB("test"));
         dbm.workWithTables("prueba2");
@@ -471,9 +540,11 @@ public class DMLManager {
         
         try {
             //dbm.insert(vals, cols);
-            dbm.update(vals, cols, null);
+            //dbm.update(vals, cols, null);
             //dbm.delete("{MMM.t} < 3");
             //dbm.update(cols, vals, "{a} > 2");
+            
+            dbm.select(cols, null, null, 1);
         } catch (ConstrainException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
