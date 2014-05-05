@@ -393,4 +393,25 @@ public class DB implements DBObject {
             return false;
         return (tables.get(table).getPK().size()>0);
     }
+    
+    public void removeRecord(long num,Table table){
+        this.records-=num;
+        table.removeRecord(num);
+        //write to file
+        jsonObject = readFile();
+        JSONObject obj = jsonObject;
+        obj.put("records", this.records);
+        JSONArray array = (JSONArray) obj.get("tablas");
+        Iterator<JSONObject> iterator = array.iterator();
+        while (iterator.hasNext()) {
+            JSONObject tabla = iterator.next();
+            if(tabla.get("name").equals(table.getName()))   {
+                tabla.put("records", table.getRecords());
+                break;
+            }
+        }
+        obj.put("tablas", array);
+        writeFile("src/db/"+name+".json", obj.toJSONString());
+        
+    }
 }

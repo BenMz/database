@@ -203,10 +203,12 @@ public class DMLManager {
      * Assumes columns are validated and values are type validated.
      * @param columns
      * @param values
+     * @return 
      * @throws ConstrainException 
      */
-    public void insert(List<String> values, List<String> columns) throws ConstrainException{
+    public int insert(List<String> values, List<String> columns) throws ConstrainException{
         //TODO: check contrains
+        int insertedRows = 0;
         if(this.currTables.size() != 1){
             throw new ConstrainException("Invalid working table: "+this.currTables.keySet());
         }else {
@@ -259,15 +261,18 @@ public class DMLManager {
                 }
             }
         }
+        return insertedRows;
     }
     /**
      * Deletes the rows that evaluate true for the  validation. If the is no validation it deletes every row.
-     * @param validation Must be as described in the API
+     * @param validation Must be as described
+     * @return in the API
      * @throws ConstrainException 
      */
-    public void delete(String validation) throws ConstrainException{
+    public int delete(String validation) throws ConstrainException{
         ICsvMapReader mapReader;
         ICsvMapWriter mapWriter;
+        int rowsDeleted = 0;
         try {
             MetaTable currTable = getCurrentTable();
             String tempFile = currTable.physicalLocation()+".aux";
@@ -293,9 +298,14 @@ public class DMLManager {
                         //Si no cumple con el while
                         if(!this.evalWhere(validation, data)){
                             mapWriter.write(rowMap, header, processors);
-                        }
+                        }else
+                            rowsDeleted++;
                 }
+            }else{
+                Table table = (Table) getCurrentTable();
+                rowsDeleted = (int) table.getRecords();
             }
+                
             mapWriter.close();
             mapReader.close();
             //Borrar original y Cambiar archivo auxiliar por normal
@@ -308,13 +318,15 @@ public class DMLManager {
         catch (IOException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
-
+        return rowsDeleted;
+                
     }
     
-    public void update(List<String> values, List<String> columns, String validation) throws ConstrainException{
+    public int update(List<String> values, List<String> columns, String validation) throws ConstrainException{
         if(columns.size() != values.size()){
             throw new ConstrainException(String.format("Values passed (%s) do not corresond to the specified columns (%s).", columns.size(), values.size()));
         }
+        int updatedRows = 0;
         ICsvMapReader mapReader;
         ICsvMapWriter mapWriter;
         try {
@@ -371,6 +383,7 @@ public class DMLManager {
         catch (IOException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
+        return updatedRows;
     }
     
     /**

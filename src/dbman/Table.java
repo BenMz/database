@@ -43,6 +43,10 @@ public class Table implements MetaTable {
     public void addRecord(){
         this.records++;
     }
+    
+    public void removeRecord(long num){
+        this.records-=num;
+    }
 
     public void setDatabase(String database){
         this.database = database;

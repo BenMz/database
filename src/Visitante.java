@@ -2,6 +2,7 @@
 import dbman.ConstrainException;
 import dbman.DB;
 import dbman.DMLManager;
+import dbman.Table;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -29,16 +30,17 @@ import org.supercsv.prefs.CsvPreference;
  *
  * @author Ben
  */
-public class Visitante extends
-        
-        SQLBaseVisitor<Object>{
-    String mensajes="";
-    DB workingDB = null;
-    HashMap<String, LinkedList> columns ; //se usa al momento de crear tabla
-    LinkedList columnOrder;
-    HashMap<String, JSONObject> constraints ; //se usa al momento de crear tabla
-    String alterTable = null;
-    LinkedList<LinkedList> alterOperations = new LinkedList();
+public class Visitante extends SQLBaseVisitor<Object>{
+    private String mensajes="";
+    private DB workingDB = null;
+    private HashMap<String, LinkedList> columns ; //se usa al momento de crear tabla
+    private LinkedList columnOrder;
+    private HashMap<String, JSONObject> constraints ; //se usa al momento de crear tabla
+    private String alterTable = null;
+    private LinkedList<LinkedList> alterOperations = new LinkedList();
+    private int insertedRows = 0;
+    private int deletedRows = 0;
+    private int updatedRows = 0;
 
     @Override
     public Object visitExpression(SQLParser.ExpressionContext ctx) {
@@ -133,7 +135,10 @@ public class Visitante extends
 
     @Override
     public Object visitWhereClause(SQLParser.WhereClauseContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       if(ctx.expression()!=null)
+           return visit(ctx.expression());
+       else
+           return null;
     }
 
     @Override
@@ -201,7 +206,25 @@ public class Visitante extends
 
     @Override
     public Object visitDeleteStm(SQLParser.DeleteStmContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       if(workingDB==null){
+           mensajes = "Not using any database";
+           return -1;
+       }
+       DMLManager dbm = new DMLManager(workingDB);
+       dbm.workWithTables(ctx.ID().getText());
+       String where = (String) visit(ctx.whereClause());
+       int result = 0;
+        try {
+            result = dbm.delete(where);
+            
+        } catch (ConstrainException ex) {
+            mensajes = "Unable to delete "+ex.getMessage();
+            return -1;
+        }
+        deletedRows+=result;
+        workingDB.removeRecord(result, (Table) workingDB.getTables().get(ctx.ID().getText()));
+       return null;
+       
     }
     
     @Override
@@ -368,10 +391,12 @@ public class Visitante extends
             return visit(ctx.expression());
         if(ctx.ID(0)!=null){ //si es un ID
             if(ctx.ID(1)!=null) //si es un ID.ID
-                return "{"+ctx.ID(0).getText()+"."+ctx.ID(1).getText()+"}";
+                return "{"+ctx.ID(0).getText()+"."+ctx.ID(1).getText()+"} ";
             else
-                return "{"+ctx.ID(0)+"}";
+                return "{"+ctx.ID(0)+"} ";
         }
+        if(ctx.STRING()!=null)
+            return "\""+ctx.getText()+"\"";
        
        return ctx.getText();  
     }
@@ -752,7 +777,7 @@ public class Visitante extends
            mensajes = "Unable to insert "+ex.getMessage();
            return -1;
         }
-       
+       insertedRows++;
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 

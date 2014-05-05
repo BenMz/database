@@ -1,2 +1,3 @@
 USE DATABASE foo;
-INSERT INTO t1 (key,other) VALUES(1,100)
+DELETE FROM t1 WHERE key=100 OR key=1040;
+
