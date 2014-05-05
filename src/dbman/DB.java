@@ -77,6 +77,10 @@ public class DB implements DBObject {
             if(!constraints.containsKey(constraint.get("table")))
                 constraints.put((String) constraint.get("table"), new LinkedList());
             constraints.get(constraint.get("table")).add(constraint);
+            if(constraint.get("type").equals("primary")){
+               Table tabla =  (Table) this.tables.get(constraint.get("table"));
+               tabla.setPK((JSONArray) constraint.get("columns"));
+            }
         }
             
         
@@ -157,7 +161,9 @@ public class DB implements DBObject {
             else
                 deleted=tabla;
         }      
+        
         obj.put("tablas", nuevo);
+        
         //restar registros
         long records = (long) obj.get("records");
         obj.put("records",records-(long)deleted.get("records"));
@@ -173,6 +179,7 @@ public class DB implements DBObject {
             
         }
         obj.put("constraints", allConstraints);
+       
         writeFile("src/db/"+name+".json", obj.toJSONString());
        //quitarlo de la variable
         tables.remove(table);
@@ -196,7 +203,31 @@ public class DB implements DBObject {
                 tabla.put("columns", nuevo);
             }
                 
-        }      
+        }  
+        //iterar para borrar constraints
+        JSONObject allConstraints = (JSONObject) obj.get("constraints");
+        Iterator it = allConstraints.keySet().iterator();
+        JSONObject newConstraints = (JSONObject) allConstraints.clone();
+        LinkedList<JSONObject> nuevaLista = new LinkedList();
+        while(it.hasNext()){
+            JSONObject constraint = (JSONObject) allConstraints.get(it.next());
+            JSONArray columns = (JSONArray) constraint.get("columns");
+            if(constraint.get("table").equals(table)){
+                if(columns.contains(column)){
+                    columns.remove(column);
+                    if(columns.size()==0){
+                        newConstraints.remove(constraint.get("name"));
+                        constraints.remove(constraint.get("name"));
+                    }
+                }
+                    
+            }else
+                nuevaLista.add(constraint);
+        }
+        if(nuevaLista.size()>0)
+            constraints.put(table, nuevaLista);
+        
+        obj.put("constraints", newConstraints);
         writeFile("src/db/"+name+".json", obj.toJSONString());
        //quitarlo de la variable
         tables.get(table).getColumns().remove(column);
@@ -229,6 +260,11 @@ public class DB implements DBObject {
         if(!this.constraints.containsKey(table))
             this.constraints.put(table, new LinkedList());
         this.constraints.get(table).add(constraint);
+        if(constraint.get("type").equals("primary")){
+            Table tabla = (Table) this.tables.get(table);
+            tabla.setPK((JSONArray) constraint.get("columns"));
+        }
+           
     }
     
     public void dropConstraint(String table, String constraint){
@@ -313,9 +349,14 @@ public class DB implements DBObject {
         while(it.hasNext()){
             JSONObject obj =it.next();
             String type = (String) obj.get("type");
-            if(type.equals("primary")){
-                JSONArray columnas = (JSONArray) obj.get("columns");
-                if(columnas.contains(col))
+//            if(type.equals("primary")){
+//                JSONArray columnas = (JSONArray) obj.get("columns");
+//                if(columnas.contains(col))
+//                    return (String) obj.get("name");
+//            }
+            if(type.equals("foreign") && obj.get("referencedTable").equals(table)){
+                JSONArray refCols = (JSONArray) obj.get("referencedColumns");
+                if(refCols.contains(col))
                     return (String) obj.get("name");
             }
             // TODO comprobacion para check y foreign
@@ -323,5 +364,33 @@ public class DB implements DBObject {
         }
         
         return null;
+    }
+    
+    public String usingTable(String table){
+        jsonObject = readFile();
+        JSONObject allConstraints = (JSONObject) jsonObject.get("constraints");
+        Iterator<JSONObject> it = allConstraints.keySet().iterator();
+        while(it.hasNext()){
+            JSONObject obj =(JSONObject) allConstraints.get(it.next());
+            String type = (String) obj.get("type");
+//            if(type.equals("primary")){
+//                JSONArray columnas = (JSONArray) obj.get("columns");
+//                if(columnas.contains(col))
+//                    return (String) obj.get("name");
+//            }
+            if(type.equals("foreign") && obj.get("referencedTable").equals(table)){
+                return "Columns "+obj.get("columns")+" references columns "+obj.get("referencedColumns")+" of table "+table;
+            }
+            // TODO comprobacion para check y foreign
+        
+        }
+        
+        return null;
+    }
+    
+    public boolean hasPK(String table){
+        if(!tables.containsKey(table))
+            return false;
+        return (tables.get(table).getPK().size()>0);
     }
 }

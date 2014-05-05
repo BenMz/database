@@ -38,7 +38,76 @@ public class Visitante extends
 
     @Override
     public Object visitFKey(SQLParser.FKeyContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        String id = ctx.getParent().getChild(1).getText();//agarra el id del padre, que es Constraint
+        String refTable = ctx.ID().getText();
+       if(constraints.containsKey(id)){
+           mensajes = "The relation "+id+" was already created";
+          return -1;
+       }
+       //ver si existe la tabla foranea 
+       if(!workingDB.getTables().containsKey(refTable)){
+           mensajes = "The table"+refTable+" doesn't exist";
+           return -1;
+       }
+       //columnas de la tabla local
+       LinkedList columnas = (LinkedList) visit(ctx.idList(0));
+       Iterator it = columnas.iterator();
+       JSONArray arrayConstraints = new JSONArray();
+       JSONObject obj = new JSONObject();
+       while(it.hasNext()){
+           String col = (String) it.next();
+           //determinar si existe la columna
+            if(workingDB.getTables().get(alterTable)==null){
+                if(!columns.containsKey(col)){
+                    mensajes = "Column "+col+" doesn't exist";
+                    return -1;
+                }
+            }else{
+                if(!workingDB.getTables().get(alterTable).getColumns().containsKey(col)){
+                    mensajes = "Column "+col+" doesn't exist";
+                    return -1;                  
+                }
+            }
+           arrayConstraints.add(col);
+       }
+       obj.put("columns",arrayConstraints);
+       obj.put("name", id);
+       obj.put("type", "foreign");
+       
+       //columnas de la tabla foranea
+       
+       obj.put("referencedTable", refTable);
+       columnas = (LinkedList) visit(ctx.idList(1));
+       it = columnas.iterator();
+       JSONArray arrayRef = new JSONArray();
+       int index = 0; //determinar indice de la columna en el array de columns
+       while(it.hasNext()){
+           String col = (String) it.next();
+           //determinar si existe estas columns y si son PK
+           
+           if(!workingDB.getTables().get(refTable).getPK().contains(col)){
+               mensajes = "Column "+col+" is not unique in table "+refTable;
+               return -1;
+           }
+           //determinar si son del mismo tipo
+           JSONObject refCol = workingDB.getTables().get(refTable).getColumns().get(col);
+           
+           String tipo ;
+           if(workingDB.getTables().get(alterTable)==null){
+                tipo = columns.get(arrayConstraints.get(index)).get(1).toString(); //en la posicion 1 esta el tipo de la columna
+            }else{
+                tipo = (String) workingDB.getTables().get(alterTable).getColumns().get(arrayConstraints.get(index)).get("type");
+            }
+           if(!(tipo).equals(refCol.get("type"))){
+               mensajes = "Column "+arrayConstraints.get(index)+" has different type than "+col;
+               return -1;              
+           }
+           arrayRef.add(col);   
+           index++;
+       }
+       obj.put("referencedColumns", arrayRef);
+       
+       return obj;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -117,7 +186,7 @@ public class Visitante extends
         for(int i=0;i<ctx.alterStm2().size();i++){
             if(visit(ctx.alterStm2(i))!=null)
                 return -1;
-            //TODO si un constraint hace referencia a una columna en dropCol, borrar ese constraint
+           
         }
         
         for (LinkedList result : alterOperations) {
@@ -145,7 +214,7 @@ public class Visitante extends
                     
             }
         }
-        
+        alterTable = "";
         return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -238,7 +307,8 @@ public class Visitante extends
 
     @Override
     public Object visitMulDef(SQLParser.MulDefContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       
+        return visitChildren(ctx);   //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -316,8 +386,7 @@ public class Visitante extends
             mensajes = "Constraint "+result+" references column "+ ctx.ID().getText();
             return -1;           
         }
-        // TODO ver que no haga referencia desde otra tabla
-        
+
         LinkedList add = new LinkedList();
         add.add("dropCol");
         add.add(ctx.ID().getText());
@@ -373,7 +442,10 @@ public class Visitante extends
          mensajes = "Table "+ctx.ID().getText()+" already exists";
          return -1;
      }
-        visitChildren(ctx); 
+     
+    
+        if(visitChildren(ctx)!=null)
+            return -1;
         
        JSONObject newTable = new JSONObject();
        newTable.put("name", ctx.ID().getText());
@@ -430,13 +502,19 @@ public class Visitante extends
         
         if(visit(ctx.constraint())!=null)
             return -1;
-        Iterator<String> it = constraints.keySet().iterator();
-        JSONObject constraint = constraints.get(it.next()); //como sabemos que solo hay un constraint declarado
+        
+       
+       
+
+        JSONObject constraint = constraints.get("addCon"); //como sabemos que solo hay uno 
         constraint.put("table",table);
         LinkedList result = new LinkedList();
         result.add("addCon");
         result.add(constraint);
-        alterOperations.add(result);
+            alterOperations.add(result);              
+           
+        
+
         
 
         return null;  //To change body of generated methods, choose Tools | Templates.
@@ -491,12 +569,19 @@ public class Visitante extends
 
     @Override
     public Object visitDropStm(SQLParser.DropStmContext ctx) {
+       
         if(!workingDB.getTables().containsKey(ctx.ID().getText())){
             mensajes = "Table "+ctx.ID().getText()+" doesn't exist";
             return -1;
         }
-        // TODO ver constraints si no hay referencias
+       
+        String result = workingDB.usingTable(ctx.ID().getText());
+        if(result!=null){
+            mensajes = result;
+            return -1;
+        }
         workingDB.dropTable(ctx.ID().getText());
+        mensajes = "Table "+ctx.ID().getText()+" deleted";
         return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -593,12 +678,21 @@ public class Visitante extends
            mensajes = "The relation "+id+" already exists";
            return -1;
        }
-
-       JSONObject constraint = (JSONObject) visit(ctx.getChild(2)); //child 2 = constraintType
        
-       constraints.put(id, constraint);
+       JSONObject constraint;
+       
+       try{
+       constraint = (JSONObject) visit(ctx.getChild(2)); //child 2 = constraintType
+       }catch(Exception e){
+           
+           return -1;
+       }
        
        
+       if(constraint.get("type").equals("primary"))
+           constraints.put("_pk", constraint); //esto indicara que ya no se puede crear otra primary key
+       
+       constraints.put("addCon", constraint);
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -645,7 +739,7 @@ public class Visitante extends
 
     @Override
     public Object visitCreateDef(SQLParser.CreateDefContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+      return visitChildren(ctx);    //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -676,12 +770,30 @@ public class Visitante extends
           return -1;
        }
        
+       if(constraints.containsKey("_pk") ||  workingDB.hasPK(alterTable)){
+           mensajes = "Table already has primary key";
+           return -1;
+       }
+       
        LinkedList lista = (LinkedList) visit(ctx.idList());
        Iterator it = lista.iterator();
        JSONArray arrayConstraints = new JSONArray();
        JSONObject obj = new JSONObject();
-       while(it.hasNext())
-           arrayConstraints.add(it.next());
+       while(it.hasNext()){
+           String col = (String) it.next();
+           if(workingDB.getTables().containsKey(alterTable)){
+               if(!workingDB.getTables().get(alterTable).getColumns().containsKey(col)){
+                   mensajes = "The column "+col+" doesn't exist";
+                   return -1;
+               }
+           }else{
+               if(!columns.containsKey(col)){
+                   mensajes = "The column "+col+" doesn't exist";
+                   return -1;                  
+               }
+           }
+           arrayConstraints.add(col);
+       }
        obj.put("columns",arrayConstraints);
        obj.put("name", id);
        obj.put("type", "primary");
@@ -743,7 +855,7 @@ public class Visitante extends
     public Object visitFieldDef(SQLParser.FieldDefContext ctx) {
        //ver si no se ha creado la lista
         
-        String name = ctx.ID(0).getText();
+        String name = ctx.ID().getText();
         
         if(columns.containsKey(name)){
             mensajes = "Column "+name+" is already created";
@@ -769,10 +881,7 @@ public class Visitante extends
        
         columns.put(name, datos);
         
-      /*ver si hace referencia a otra tabla*/
-        if(ctx.ref!=null){
-           // TODO: verificacion de tipo y primary key
-        }
+
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -788,7 +897,9 @@ public class Visitante extends
 
     @Override
     public Object visitSingleDef(SQLParser.SingleDefContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       if(visit(ctx.createList())!=null)
+           return -1;
+       return visit(ctx.createDef());    //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
