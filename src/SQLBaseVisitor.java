@@ -265,6 +265,14 @@ public class SQLBaseVisitor<T> extends AbstractParseTreeVisitor<T> implements SQ
 	 * The default implementation returns the result of calling
 	 * {@link #visitChildren} on {@code ctx}.
 	 */
+	@Override public T visitAlterStm(@NotNull SQLParser.AlterStmContext ctx) { return visitChildren(ctx); }
+
+	/**
+	 * {@inheritDoc}
+	 * <p/>
+	 * The default implementation returns the result of calling
+	 * {@link #visitChildren} on {@code ctx}.
+	 */
 	@Override public T visitNotEquals(@NotNull SQLParser.NotEqualsContext ctx) { return visitChildren(ctx); }
 
 	/**
@@ -465,6 +473,14 @@ public class SQLBaseVisitor<T> extends AbstractParseTreeVisitor<T> implements SQ
 	 * The default implementation returns the result of calling
 	 * {@link #visitChildren} on {@code ctx}.
 	 */
+	@Override public T visitSum(@NotNull SQLParser.SumContext ctx) { return visitChildren(ctx); }
+
+	/**
+	 * {@inheritDoc}
+	 * <p/>
+	 * The default implementation returns the result of calling
+	 * {@link #visitChildren} on {@code ctx}.
+	 */
 	@Override public T visitConstraint(@NotNull SQLParser.ConstraintContext ctx) { return visitChildren(ctx); }
 
 	/**
@@ -474,14 +490,6 @@ public class SQLBaseVisitor<T> extends AbstractParseTreeVisitor<T> implements SQ
 	 * {@link #visitChildren} on {@code ctx}.
 	 */
 	@Override public T visitSelectStm(@NotNull SQLParser.SelectStmContext ctx) { return visitChildren(ctx); }
-
-	/**
-	 * {@inheritDoc}
-	 * <p/>
-	 * The default implementation returns the result of calling
-	 * {@link #visitChildren} on {@code ctx}.
-	 */
-	@Override public T visitSum(@NotNull SQLParser.SumContext ctx) { return visitChildren(ctx); }
 
 	/**
 	 * {@inheritDoc}

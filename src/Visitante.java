@@ -7,6 +7,7 @@ import java.util.EmptyStackException;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 
@@ -27,6 +28,8 @@ public class Visitante extends
     DB workingDB = null;
     HashMap<String, LinkedList> columns ; //se usa al momento de crear tabla
     HashMap<String, JSONObject> constraints ; //se usa al momento de crear tabla
+    String alterTable = null;
+    LinkedList<LinkedList> alterOperations = new LinkedList();
 
     @Override
     public Object visitExpression(SQLParser.ExpressionContext ctx) {
@@ -104,6 +107,47 @@ public class Visitante extends
     public Object visitDeleteStm(SQLParser.DeleteStmContext ctx) {
        visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
     }
+    
+    @Override
+    public Object visitAlterStm(SQLParser.AlterStmContext ctx) {
+        alterOperations = new LinkedList();
+        alterTable = ctx.ID().getText();
+        constraints = new HashMap();
+        columns = new HashMap();
+        for(int i=0;i<ctx.alterStm2().size();i++){
+            if(visit(ctx.alterStm2(i))!=null)
+                return -1;
+            //TODO si un constraint hace referencia a una columna en dropCol, borrar ese constraint
+        }
+        
+        for (LinkedList result : alterOperations) {
+            switch (result.get(0).toString()) {
+                case "dropCol":
+                    workingDB.dropColumn(alterTable, (String) result.get(1));
+                    mensajes = "Column "+ result.get(1)+" from table "+alterTable+" has been deleted.";
+                    break;
+                case "dropCon":
+                    workingDB.dropConstraint(alterTable, (String) result.get(1));
+                    break;
+                case "addCon":
+                    workingDB.addConstraint(alterTable, (JSONObject) result.get(1));
+                    break;
+                case "addCol":
+                    workingDB.addColumn(alterTable, (JSONObject) result.get(1));  
+                    mensajes = "Column "+result.get(2)+" added to table "+alterTable;
+                    break;
+                case "addColCon":
+                    LinkedList<JSONObject> allConstraints = (LinkedList<JSONObject>) result.get(1);
+                    for (JSONObject constraint : allConstraints) 
+                        workingDB.addConstraint(alterTable,constraint); 
+                    
+                    
+                    
+            }
+        }
+        
+        return null;  //To change body of generated methods, choose Tools | Templates.
+    }
 
     @Override
     public Object visitIdMember(SQLParser.IdMemberContext ctx) {
@@ -122,19 +166,21 @@ public class Visitante extends
     @Override
     public Object visitAddCol(SQLParser.AddColContext ctx) {
        
-     //ver si no se ha creado la lista
-        
-        String table = ctx.ID(0).getText();
-        String colID = ctx.ID(1).getText();
+       
+        String table =alterTable;
+        String colID = ctx.ID().getText();
         
         if(!workingDB.getTables().containsKey(table)){
             mensajes = "Table "+table+" doesn't exist";
             return -1;
         }
-        if(workingDB.getTables().get(table).getColumns().containsKey(colID)){
+        if(workingDB.getTables().get(table).getColumns().containsKey(colID) || columns.containsKey(colID)){
             mensajes = "Column "+colID+" already exists";
             return -1;
         }
+        
+        
+       columns.put(colID, null); //solo es para tener referencia de que se ha creado la nueva columna
        
         JSONObject datos = new JSONObject();
         datos.put("name",colID);
@@ -152,15 +198,32 @@ public class Visitante extends
         //si es char agregar tamano
         if(datos.get("type").equals("CHAR"))
             datos.put("size",Integer.parseInt(ctx.type().NUM().getText()));
-        
-        workingDB.addColumn(table,datos);
       /*constraints*/
         if(ctx.con!=null){
-           // TODO: verificacion de constraints
+            for (SQLParser.ConstraintContext constraint : ctx.constraint()) {
+                if(visit(constraint)!=null)
+                    return -1;
+           } 
+           Iterator<String> it = constraints.keySet().iterator();
+           LinkedList<JSONObject> newConstraints = new LinkedList();
+           while(it.hasNext()){
+               JSONObject constraint = constraints.get(it.next());
+               constraint.put("table",table);
+               newConstraints.add(constraint);
+               
+           }
+           LinkedList resultCon = new LinkedList();
+           resultCon.add("addColCon");
+           resultCon.add(newConstraints);
+           alterOperations.add(resultCon);    
         }
-        
-        mensajes = "Column "+colID+" added to table "+table;
-       return null;  //To change body of generated methods, choose Tools | Templates.
+        LinkedList resultCol = new LinkedList();
+        resultCol.add("addCol");
+        resultCol.add(datos);
+        resultCol.add(colID);
+        alterOperations.add(resultCol);           
+
+      return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -217,11 +280,14 @@ public class Visitante extends
 
     @Override
     public Object visitDropCon(SQLParser.DropConContext ctx)   {
-       if(!workingDB.existsConstrain(ctx.ID(1).getText())){
-           mensajes = "The constraint "+ctx.ID(1).getText()+" doesn't exist";
+       if(!workingDB.existsConstrain(ctx.ID().getText())){
+           mensajes = "The constraint "+ctx.ID().getText()+" doesn't exist";
            return -1;
        }
-       workingDB.dropConstraint(ctx.ID(0).getText(),ctx.ID(1).getText());
+       LinkedList<String> result = new LinkedList();
+       result.add("dropCon");
+       result.add(ctx.ID().getText());
+       alterOperations.add(result);
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -237,20 +303,27 @@ public class Visitante extends
 
     @Override
     public Object visitDropCol(SQLParser.DropColContext ctx) {
-        if(!workingDB.getTables().containsKey(ctx.ID(0).getText())){
-            mensajes = "Table "+ctx.ID(0).getText()+" doesn't exist";
-            return -1;
+        
+        //verificar que exista
+        if(!workingDB.getTables().get(alterTable).getColumns().containsKey(ctx.ID().getText())){
+            mensajes = "Column "+ ctx.ID().getText()+" doesn't exist";
+            return -1;             
         }
+        
         //ver que no haya un constraint usando la columna
-        String result = workingDB.usingCol(ctx.ID(0).getText(), ctx.ID(1).getText());
+        String result = workingDB.usingCol(alterTable, ctx.ID().getText());
         if(result!=null){
-            mensajes = "Constraint "+result+" references column "+ ctx.ID(1).getText();
+            mensajes = "Constraint "+result+" references column "+ ctx.ID().getText();
             return -1;           
         }
         // TODO ver que no haga referencia desde otra tabla
         
-        workingDB.dropColumn(ctx.ID(0).getText(),ctx.ID(1).getText());
-        mensajes = "Column "+ctx.ID(1).getText()+" from table "+ctx.ID(0).getText()+" has been deleted.";
+        LinkedList add = new LinkedList();
+        add.add("dropCol");
+        add.add(ctx.ID().getText());
+        alterOperations.add(add);
+        
+      /*  */
         return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -348,7 +421,25 @@ public class Visitante extends
 
     @Override
     public Object visitAddCon(SQLParser.AddConContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        
+        String table = alterTable;
+        if(!workingDB.getTables().containsKey(table)){
+            mensajes = "Table "+table+" doesn't exist";
+            return -1;
+        }
+        
+        if(visit(ctx.constraint())!=null)
+            return -1;
+        Iterator<String> it = constraints.keySet().iterator();
+        JSONObject constraint = constraints.get(it.next()); //como sabemos que solo hay un constraint declarado
+        constraint.put("table",table);
+        LinkedList result = new LinkedList();
+        result.add("addCon");
+        result.add(constraint);
+        alterOperations.add(result);
+        
+
+        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -498,7 +589,7 @@ public class Visitante extends
     @Override
     public Object visitConstraint(SQLParser.ConstraintContext ctx) {
        String id = ctx.ID().getText();
-       if(workingDB.existsConstrain(id)){
+       if(workingDB.existsConstrain(id) || constraints.containsKey(id)){
            mensajes = "The relation "+id+" already exists";
            return -1;
        }
