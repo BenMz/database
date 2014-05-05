@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 
 /**
@@ -19,7 +20,7 @@ import org.json.simple.JSONObject;
 public class Table implements MetaTable {
     private String name;
     private HashMap<String,JSONObject> columns ; //JSONObject es un HashMap, puede tratarse como tal. El string es el nombre
-  
+    private LinkedList<String> PK;
     private String database;
     private long records;
     
@@ -27,6 +28,7 @@ public class Table implements MetaTable {
         this.name=name;
         this.database = database;
         this.records = records;
+        this.PK = new LinkedList();
         
     }
     
@@ -40,6 +42,10 @@ public class Table implements MetaTable {
 
     public void addRecord(){
         this.records++;
+    }
+    
+    public void removeRecord(long num){
+        this.records-=num;
     }
 
     public void setDatabase(String database){
@@ -62,9 +68,15 @@ public class Table implements MetaTable {
 
     @Override
     public List<String> getPK() {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        return PK;//To change body of generated methods, choose Tools | Templates.
     }
 
+    public void setPK(JSONArray columns){
+        for (Object column : columns) 
+            PK.add((String) column);
+        
+    }
+    
     @Override
     public String physicalLocation() {
         return "src/db/"+database+"/"+name+".csv";//To change body of generated methods, choose Tools | Templates.

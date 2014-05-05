@@ -105,6 +105,7 @@ public class DMLManager {
      */
     public int existsColumn(String table, String col){
         int result = 0;
+        
         if(table != null){
             if(table_aliases.containsKey(table)){
                 table = table_aliases.get(table);
@@ -114,6 +115,7 @@ public class DMLManager {
                 result = 1;
             }
         }else {
+            
             for(Map.Entry<String, MetaTable> currTs : currTables.entrySet()){
                 if(currTs.getValue().getColumns().containsKey(col)){
                     result += 1;
@@ -211,10 +213,12 @@ public class DMLManager {
      * Assumes columns are validated and values are type validated.
      * @param columns
      * @param values
+     * @return 
      * @throws ConstrainException 
      */
-    public void insert(List<String> values, List<String> columns) throws ConstrainException{
+    public int insert(List<String> values, List<String> columns) throws ConstrainException{
         //TODO: check contrains
+        int insertedRows = 0;
         if(this.currTables.size() != 1){
             throw new ConstrainException("Invalid working table: "+this.currTables.keySet());
         }else {
@@ -276,15 +280,18 @@ public class DMLManager {
             }
         }
         doneWithTables();
+        return insertedRows;
     }
     /**
      * Deletes the rows that evaluate true for the  validation. If the is no validation it deletes every row.
-     * @param validation Must be as described in the API
+     * @param validation Must be as described
+     * @return in the API
      * @throws ConstrainException 
      */
-    public void delete(String validation) throws ConstrainException{
+    public int delete(String validation) throws ConstrainException{
         ICsvMapReader mapReader;
         ICsvMapWriter mapWriter;
+        int rowsDeleted = 0;
         try {
             MetaTable currTable = getCurrentTable();
             String tempFile = currTable.physicalLocation()+".aux";
@@ -310,9 +317,14 @@ public class DMLManager {
                         //Si no cumple con el while
                         if(!this.evalWhere(validation, data)){
                             mapWriter.write(rowMap, header, processors);
-                        }
+                        }else
+                            rowsDeleted++;
                 }
+            }else{
+                Table table = (Table) getCurrentTable();
+                rowsDeleted = (int) table.getRecords();
             }
+                
             mapWriter.close();
             mapReader.close();
             //Borrar original y Cambiar archivo auxiliar por normal
@@ -326,12 +338,14 @@ public class DMLManager {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
         doneWithTables();
+        return rowsDeleted;
     }
     
-    public void update(List<String> values, List<String> columns, String validation) throws ConstrainException{
+    public int update(List<String> values, List<String> columns, String validation) throws ConstrainException{
         if(columns.size() != values.size()){
             throw new ConstrainException(String.format("Values passed (%s) do not corresond to the specified columns (%s).", columns.size(), values.size()));
         }
+        int updatedRows = 0;
         ICsvMapReader mapReader;
         ICsvMapWriter mapWriter;
         try {
@@ -397,6 +411,7 @@ public class DMLManager {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
         doneWithTables();
+        return updatedRows;
     }
     
     /**
@@ -407,16 +422,16 @@ public class DMLManager {
      * @param orderIn 0 for don't car, 1 for AC, 2 for DESC
      */
     public List<Map<String, Object>> select(List<String> columns, String validation, String orderBy, int orderIn) throws ConstrainException{
-        LinkedList<Map<String, Object>> result = new LinkedList<>();
-        
         LinkedList<LinkedList<Map<String, Object>>> partial_results = new LinkedList<>();
-        
+        System.out.println(String.format("SELECT: %s", this.currTables.keySet()));
         for(MetaTable selTable : this.currTables.values()){
+            System.out.println("Select");
             System.out.println(selTable.getName());
             //Juntamos header para lectura parcial
             List<String> partial_header  = new LinkedList<>();
             for(String col : columns){
                 if(this.existsColumn(selTable.getName(), col) == 1){
+                    System.out.println(col);
                     partial_header.add(col);
                 }else if(this.existsColumn(selTable.getName(), col) == 2){
                     throw new ConstrainException(String.format("Column %s is ambiguous.", col));
@@ -451,11 +466,12 @@ public class DMLManager {
                                     selMap.put(fh, rowMap.get(fh));
                                 }
                             }
-                            System.out.println(String.format("Partial: %s", selMap));
-                            partial_result.add(rowMap);
+                            partial_result.add(selMap);
                         }
                 }
                 mapReader.close();
+                System.out.println(String.format("Partial: %s", partial_result));
+                partial_results.add(partial_result);
 
             }
             catch (IOException ex) {
@@ -463,6 +479,21 @@ public class DMLManager {
             }
         
         }
+        LinkedList<Map<String, Object>> result = new LinkedList<>();
+        result.addAll(partial_results.get(0));
+        if(partial_results.size() > 1){
+            for(int i = 0; i < partial_results.get(0).size(); i++){
+                Map<String, Object> crossedRow = new LinkedHashMap<>();
+                crossedRow.putAll(partial_results.get(0).get(i));
+                
+                for(int j = 1; j < partial_results.get(i).size(); j++){
+                    for(int k = 0; k < partial_results.get(j).size(); k++){
+                        crossedRow.putAll(partial_results.get(j).get(k));
+                    }
+                }
+            }
+        }
+
         doneWithTables();
         return result;
     }
@@ -526,12 +557,12 @@ public class DMLManager {
     
     
     public static void main(String[] args){
-        DMLManager dbm = new DMLManager(new DB("test"));
-        dbm.workWithTables("prueba2");
+        DMLManager dbm = new DMLManager(new DB("foo"));
+        dbm.workWithTables("t1");
         
         List<String> cols = new LinkedList<>();
-        cols.add("a");
-        cols.add("b");
+        cols.add("key");
+        //cols.add("b");
         
         List<String> vals = new LinkedList<>();
         vals.add("18.22");
@@ -544,7 +575,7 @@ public class DMLManager {
             //dbm.delete("{MMM.t} < 3");
             //dbm.update(cols, vals, "{a} > 2");
             
-            dbm.select(cols, null, null, 1);
+            dbm.select(cols, null, null, 0);
         } catch (ConstrainException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }

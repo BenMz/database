@@ -228,6 +228,13 @@ public interface SQLVisitor<T> extends ParseTreeVisitor<T> {
 	T visitUseDB(@NotNull SQLParser.UseDBContext ctx);
 
 	/**
+	 * Visit a parse tree produced by {@link SQLParser#alterStm}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitAlterStm(@NotNull SQLParser.AlterStmContext ctx);
+
+	/**
 	 * Visit a parse tree produced by {@link SQLParser#notEquals}.
 	 * @param ctx the parse tree
 	 * @return the visitor result
@@ -403,6 +410,13 @@ public interface SQLVisitor<T> extends ParseTreeVisitor<T> {
 	T visitDiv(@NotNull SQLParser.DivContext ctx);
 
 	/**
+	 * Visit a parse tree produced by {@link SQLParser#sum}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitSum(@NotNull SQLParser.SumContext ctx);
+
+	/**
 	 * Visit a parse tree produced by {@link SQLParser#constraint}.
 	 * @param ctx the parse tree
 	 * @return the visitor result
@@ -415,13 +429,6 @@ public interface SQLVisitor<T> extends ParseTreeVisitor<T> {
 	 * @return the visitor result
 	 */
 	T visitSelectStm(@NotNull SQLParser.SelectStmContext ctx);
-
-	/**
-	 * Visit a parse tree produced by {@link SQLParser#sum}.
-	 * @param ctx the parse tree
-	 * @return the visitor result
-	 */
-	T visitSum(@NotNull SQLParser.SumContext ctx);
 
 	/**
 	 * Visit a parse tree produced by {@link SQLParser#emptyAdd}.
