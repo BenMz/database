@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.swing.JOptionPane;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
@@ -82,14 +84,15 @@ public class Visitante extends SQLBaseVisitor<Object>{
        JSONObject obj = new JSONObject();
        while(it.hasNext()){
            String col = (String) it.next();
-           //determinar si existe la columna
+           //determinar si existe la columna en el ambito de declaracion
             if(workingDB.getTables().get(alterTable)==null){
-                if(!columns.containsKey(col)){
-                    mensajes = "Column "+col+" doesn't exist";
-                    all.add(mensajes);
-                    return -1;
-                }
+//                if(!columns.containsKey(col)){
+//                    mensajes = "Column "+col+" doesn't exist";
+//                    all.add(mensajes);
+//                    return -1;
+//                }
             }else{
+                //determinar si existe la columna en la tabla ya creada
                 if(!workingDB.getTables().get(alterTable).getColumns().containsKey(col)){
                     mensajes = "Column "+col+" doesn't exist";
                     all.add(mensajes);
@@ -98,6 +101,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
             }
            arrayConstraints.add(col);
        }
+       
        obj.put("columns",arrayConstraints);
        obj.put("name", id);
        obj.put("type", "foreign");
@@ -118,25 +122,26 @@ public class Visitante extends SQLBaseVisitor<Object>{
                all.add(mensajes);
                return -1;
            }
-           //determinar si son del mismo tipo
-           JSONObject refCol = workingDB.getTables().get(refTable).getColumns().get(col);
-           
-           String tipo ;
-           if(workingDB.getTables().get(alterTable)==null){
-                tipo = columns.get(arrayConstraints.get(index)).get(1).toString(); //en la posicion 1 esta el tipo de la columna
-            }else{
-                tipo = (String) workingDB.getTables().get(alterTable).getColumns().get(arrayConstraints.get(index)).get("type");
-            }
-           if(!(tipo).equals(refCol.get("type"))){
-               mensajes = "Column "+arrayConstraints.get(index)+" has different type than "+col;
-               all.add(mensajes);
-               return -1;              
-           }
+//           //determinar si son del mismo tipo
+//           JSONObject refCol = workingDB.getTables().get(refTable).getColumns().get(col);
+//           
+//           String tipo ;
+//           if(workingDB.getTables().get(alterTable)==null){
+//                tipo = columns.get(arrayConstraints.get(index)).get(1).toString(); //en la posicion 1 esta el tipo de la columna
+//            }else{
+//                tipo = (String) workingDB.getTables().get(alterTable).getColumns().get(arrayConstraints.get(index)).get("type");
+//            }
+//           
+//           if(!(tipo).equals(refCol.get("type"))){
+//               mensajes = "Column "+arrayConstraints.get(index)+" has different type than "+col;
+//               all.add(mensajes);
+//               return -1;              
+//           }
            arrayRef.add(col);   
            index++;
        }
        obj.put("referencedColumns", arrayRef);
-       
+
        return obj;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -256,7 +261,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
                 return -1;
            
         }
-        
+        //alterOperations se utiliza para determinar las diferentes acciones que se dan en una alter statement
         for (LinkedList result : alterOperations) {
             switch (result.get(0).toString()) {
                 case "dropCol":
@@ -270,7 +275,20 @@ public class Visitante extends SQLBaseVisitor<Object>{
                     all.add(mensajes);
                     break;
                 case "addCon":
-                    workingDB.addConstraint(alterTable, (JSONObject) result.get(1));
+                    JSONObject constraint = (JSONObject) result.get(1);
+                    JSONArray columnas = (JSONArray) constraint.get("columns");
+                    //revisamos que cada columna exista
+                    
+                    for(Object col: columnas){
+                        if(!workingDB.getTables().get(alterTable).getColumns().containsKey(col) || !columns.containsKey(col)){
+                            mensajes = "The column "+col+" doesn't exist";
+                            all.add(mensajes);
+                            return -1;
+                        }
+                    }
+
+                    
+                    workingDB.addConstraint(alterTable, constraint);
                     mensajes = "Constraint "+result.get(1)+" added";
                     all.add(mensajes);
                     break;
@@ -281,8 +299,21 @@ public class Visitante extends SQLBaseVisitor<Object>{
                     break;
                 case "addColCon":
                     LinkedList<JSONObject> allConstraints = (LinkedList<JSONObject>) result.get(1);
-                    for (JSONObject constraint : allConstraints) 
-                        workingDB.addConstraint(alterTable,constraint); 
+                    //siempre revisar que existan las columnas
+                    for (JSONObject con : allConstraints) {
+                       JSONArray conCol = (JSONArray) con.get("columns");
+                       for(Object col: conCol){
+                           if(!workingDB.getTables().get(alterTable).getColumns().containsKey(col) || !columns.containsKey(col)){
+                               mensajes = "The column "+col+" doesn't exist";
+                               all.add(mensajes);
+                               return -1;
+                           }
+                       }       
+                       //agregar constraint 
+                       workingDB.addConstraint(alterTable,con); 
+                        mensajes = "Constraint "+con.get("name")+" added";
+                        all.add(mensajes);
+                    }
                     
                     
                     
@@ -552,7 +583,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
            all.add(mensajes);
        }
        
-       System.out.println(assignments);
+//       System.out.println(assignments);
        List<String> columns = new LinkedList();
        List<String> values = new LinkedList();
        Iterator<Map.Entry> it = assignments.entrySet().iterator();
@@ -601,14 +632,16 @@ public class Visitante extends SQLBaseVisitor<Object>{
      }
      
     
-        if(visitChildren(ctx)!=null)
+        if(visit(ctx.createList())!=null){
+           
             return -1;
+        }
         
        JSONObject newTable = new JSONObject();
        newTable.put("name", ctx.ID().getText());
        JSONArray columnas = new JSONArray();
       
-       Iterator<String> keys = columnOrder.descendingIterator();
+       Iterator<String> keys = columnOrder.descendingIterator(); //como el parser lee de derecha a izquierda,se invierte
        
         while (keys.hasNext()) {
             
@@ -628,33 +661,63 @@ public class Visitante extends SQLBaseVisitor<Object>{
         
         //constraints
         
+        constraints.remove("_pk"); //para que no lo tome dos veces
         keys = constraints.keySet().iterator();
         JSONArray arrayConstraints = new JSONArray();
-        while(keys.hasNext())
-            arrayConstraints.add(constraints.get(keys.next()));
+        while(keys.hasNext()){
+            JSONObject constraint = constraints.get(keys.next());
+            JSONArray conCol = (JSONArray) constraint.get("columns");
+            //revisar que existan las columnas
+            for(Object col: conCol){
+                if(!columns.containsKey(col)){
+                    mensajes = "The column "+col+" doesn't exist";
+                    all.add(mensajes);
+                    return -1;
+                }                
+            }
+            if(constraint.get("type").equals("foreign")){
+                JSONArray refCols = (JSONArray) constraint.get("referencedColumns");
+                if(refCols.size()!=conCol.size()){
+                    mensajes = "Different number of columns between "+refCols+" and "+conCol;
+                    all.add(mensajes);
+                    return -1;               
+                }
+                //VALIDAR TIPOS
+                for(int i=0;i<conCol.size();i++){
+                    //           //determinar si son del mismo tipo
+                    JSONObject refCol = workingDB.getTables().get(constraint.get("referencedTable")).getColumns().get(refCols.get(i));
+         //           
+                    String tipo ; //tipo de la variable local
+                    if(workingDB.getTables().get(alterTable)==null){
+                         tipo = columns.get(conCol.get(i)).get(1).toString(); //en la posicion 1 esta el tipo de la columna
+                     }else{
+                         tipo = (String) workingDB.getTables().get(alterTable).getColumns().get(conCol.get(i)).get("type");
+                     }
+         //           
+                    if(!(tipo).equals(refCol.get("type"))){
+                        mensajes = "Column "+conCol.get(i)+" has different type than "+refCol.get("name");
+                        all.add(mensajes);
+                        return -1;              
+                    }
+                }
+            }
+            
+            
+            arrayConstraints.add(constraint);
+        }
         
-        
+        System.exit(0);
         workingDB.createTable(newTable,arrayConstraints);
 	try {
  
 		FileWriter file = new FileWriter("src/db/"+workingDB.getName()+"/"+ctx.ID().getText()+".csv");
-		
-                 ICsvMapWriter mapWriter = null;
-                 mapWriter = new CsvMapWriter(file,
-                        CsvPreference.STANDARD_PREFERENCE);
-                 String[] header = new String[columnas.size()];
-                 for(int i=0;i<columnas.size();i++){
-                     JSONObject temp = (JSONObject) columnas.get(i);
-                     header[i]=(String) temp.get("name");
-                 }
-                 mapWriter.writeHeader(header);
-                 mapWriter.close();
                  
  
 	} catch (IOException e) {
 		e.printStackTrace();
 	}  
-       
+        mensajes = "Tabla "+ctx.ID()+" creada";
+       all.add(mensajes);
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -691,7 +754,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
         LinkedList result = new LinkedList();
         result.add("addCon");
         result.add(constraint);
-            alterOperations.add(result);              
+        alterOperations.add(result);              
            
         
 
@@ -787,6 +850,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
         mensajes = "Table "+ctx.ID().getText()+" deleted";
         all.add(mensajes);
         File f = new File("src/db/"+workingDB.getName()+"/"+ctx.ID().getText()+".csv");
+   
         f.delete();
         return null;  //To change body of generated methods, choose Tools | Templates.
     }
@@ -879,8 +943,14 @@ public class Visitante extends SQLBaseVisitor<Object>{
            return -1;
        }
        DMLManager dbm = new DMLManager(workingDB);
+       
        dbm.workWithTables(ctx.ID().getText());
-       LinkedList columns = (LinkedList) visit(ctx.idList());
+       LinkedList columns = null;
+       try{
+        columns = (LinkedList) visit(ctx.idList());
+       }catch(Exception e){
+          columns = null;
+       }
        LinkedList values = (LinkedList) visit(ctx.exprList());
 //       System.out.println(values);
         try {
@@ -935,8 +1005,11 @@ public class Visitante extends SQLBaseVisitor<Object>{
        
        if(constraint.get("type").equals("primary"))
            constraints.put("_pk", constraint); //esto indicara que ya no se puede crear otra primary key
-       
-       constraints.put("addCon", constraint);
+       LinkedList lista = new LinkedList();
+       lista.add("addCon");
+       lista.add(constraint);
+       alterOperations.add(lista);
+       constraints.put((String) constraint.get("name"), constraint);
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -1093,11 +1166,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
                    return -1;
                }
            }else{
-               if(!columns.containsKey(col)){
-                   mensajes = "The column "+col+" doesn't exist";
-                   all.add(mensajes);
-                   return -1;                  
-               }
+         
            }
            arrayConstraints.add(col);
        }
@@ -1144,7 +1213,49 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitCheck(SQLParser.CheckContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       JSONObject obj = new JSONObject();
+       String id = ctx.getParent().getChild(1).getText();//agarra el id del padre, que es Constraint
+       String exp = (String) visit(ctx.expression());
+  //encontrar las columnas que hace referencia
+        Pattern column_pattern = Pattern.compile( "\\{[^\\. ;]+\\}"); //Hace match de cosas como {tabla.columna} o {columna}
+        Matcher matcher = column_pattern.matcher(exp);
+        LinkedList columnas = null;
+        while(matcher.find()){
+            String col = matcher.group();
+            String[] col_parts = col.substring(1, col.length()-1).split("\\.");
+            //Normalizar col para el regex a reemplazar en la expresión luego
+            col = col.replace("{", "").replace("}", "");
+            if(!columnas.contains(col))
+                columnas.add(col);
+        }
+        
+        System.exit(0);
+       
+       Iterator it = columnas.iterator();
+       JSONArray arrayConstraints = new JSONArray();
+       while(it.hasNext()){
+           String col = (String) it.next();
+           //determinar si existe la columna en el ambito de declaracion
+            if(workingDB.getTables().get(alterTable)==null){
+//                if(!columns.containsKey(col)){
+//                    mensajes = "Column "+col+" doesn't exist";
+//                    all.add(mensajes);
+//                    return -1;
+//                }
+            }else{
+                //determinar si existe la columna en la tabla ya creada
+                if(!workingDB.getTables().get(alterTable).getColumns().containsKey(col)){
+                    mensajes = "Column "+col+" doesn't exist";
+                    all.add(mensajes);
+                    return -1;                  
+                }
+            }
+           arrayConstraints.add(col);
+       }
+       obj.put("columns",arrayConstraints);
+       obj.put("name", id);
+       obj.put("type", "foreign");        
+       return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -1220,9 +1331,11 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitSingleDef(SQLParser.SingleDefContext ctx) {
-       if(visit(ctx.createList())!=null)
+       if(visit(ctx.getChild(2))!=null)
            return -1;
-       return visit(ctx.createDef());    //To change body of generated methods, choose Tools | Templates.
+       if(visit(ctx.createDef())!=null)
+           return -1;
+       return null;
     }
 
     @Override

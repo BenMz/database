@@ -173,35 +173,35 @@ public class DB implements DBObject {
         ICsvMapWriter mapWriter = null;
         Table currTable = (Table) getTables().get(table);
         String tempFile = currTable.physicalLocation()+".aux";
-        try{
-            mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
-            mapWriter = new CsvMapWriter(new FileWriter(tempFile), CsvPreference.STANDARD_PREFERENCE);
-            
-            // the header columns are used as the keys to the Map
-            final String[] header = mapReader.getHeader(true);
-            final String[] newHeader = listColumns.toArray(new String[listColumns.size()]);
-            final CellProcessor[] processors =  new CellProcessor[currTable.getColumns().size()];
-            final CellProcessor[] newprocessors =  new CellProcessor[currTable.getColumns().size()+1];
-            mapWriter.writeHeader(newHeader);
-            
-            Map<String, Object> rowMap;
-            //Mientras haya que leer
-            while( (rowMap = mapReader.read(header, processors)) != null ) {
-                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
-                            mapReader.getRowNumber(), rowMap));
-                    rowMap.put((String) column.get("name"), getDefault((String) column.get("type")));
-                    mapWriter.write(rowMap, newHeader, newprocessors);
-            }
-            mapWriter.close();
-            mapReader.close();
-            //Borrar original y Cambiar archivo auxiliar por normal
-            File old = new File(currTable.physicalLocation());
-            old.delete();
-            File newfile = new File(tempFile);
-            newfile.renameTo(old);        }
-        catch(IOException e){
-            
-        }
+//        try{
+//            mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
+//            mapWriter = new CsvMapWriter(new FileWriter(tempFile), CsvPreference.STANDARD_PREFERENCE);
+//            
+//            // the header columns are used as the keys to the Map
+//            final String[] header = mapReader.getHeader(true);
+//            final String[] newHeader = listColumns.toArray(new String[listColumns.size()]);
+//            final CellProcessor[] processors =  new CellProcessor[currTable.getColumns().size()];
+//            final CellProcessor[] newprocessors =  new CellProcessor[currTable.getColumns().size()+1];
+//            mapWriter.writeHeader(newHeader);
+//            
+//            Map<String, Object> rowMap;
+//            //Mientras haya que leer
+//            while( (rowMap = mapReader.read(header, processors)) != null ) {
+//                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+//                            mapReader.getRowNumber(), rowMap));
+//                    rowMap.put((String) column.get("name"), getDefault((String) column.get("type")));
+//                    mapWriter.write(rowMap, newHeader, newprocessors);
+//            }
+//            mapWriter.close();
+//            mapReader.close();
+//            //Borrar original y Cambiar archivo auxiliar por normal
+//            File old = new File(currTable.physicalLocation());
+//            old.delete();
+//            File newfile = new File(tempFile);
+//            newfile.renameTo(old);        }
+//        catch(IOException e){
+//            
+//        }
         
         
         writeFile("src/db/"+name+".json", obj.toJSONString());
@@ -232,15 +232,15 @@ public class DB implements DBObject {
         //borrar constraints de la tabla
         JSONObject allConstraints = (JSONObject) obj.get("constraints");
         Iterator<String> keys = allConstraints.keySet().iterator();
-        
+        JSONObject newConstraints = (JSONObject) allConstraints.clone();
         while(keys.hasNext()){
             String key = keys.next();
-            JSONObject constraint = (JSONObject) allConstraints.get(key);
+            JSONObject constraint = (JSONObject) newConstraints.get(key);
             if(constraint.get("table").equals(table))
-                allConstraints.remove(key);
+                newConstraints.remove(key);
             
         }
-        obj.put("constraints", allConstraints);
+        obj.put("constraints", newConstraints);
        
         writeFile("src/db/"+name+".json", obj.toJSONString());
        //quitarlo de la variable

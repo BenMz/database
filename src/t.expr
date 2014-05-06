@@ -1,8 +1,4 @@
 USE DATABASE foo;
-CREATE TABLE t2 (
-    z INT,
-    y FLOAT,
-    x DATE NOT NULL
-
-);
-
+CREATE TABLE t3 (
+CONSTRAINT chk CHECK (a>10.0 AND a<20.0),
+a FLOAT)
