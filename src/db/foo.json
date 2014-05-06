@@ -1,1 +1,1 @@
-{"tablas":[{"name":"t1","columns":[{"name":"key","notNull":"false","type":"INT"},{"name":"other","notNull":"false","type":"INT"}],"records":3},{"name":"t2","columns":[{"name":"z","notNull":"false","type":"INT"},{"name":"y","notNull":"false","type":"FLOAT"},{"name":"x","notNull":"true","type":"DATE"}],"records":0}],"constraints":{"pk":{"name":"pk","columns":["key"],"table":"t1","type":"primary"}},"records":3}
+{"tablas":[],"constraints":{},"records":0}
