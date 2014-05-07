@@ -376,7 +376,7 @@ public class DMLManager {
                         data.put(currTable.getName(), newRow);
                         //Si no cumple con el while
                         for(JSONObject chk : chks){
-                            System.out.println("chk"+chk.toJSONString());
+                            System.out.println("chk"+chk.toJSONString()+"  "+chk.get("expression"));
                             if(!this.evalWhere((String) chk.get("expression"), data)){
                                 throw new  ConstrainException(String.format("Insert violates '%s' CHECK", chk.get("name")));
                             }
@@ -549,7 +549,7 @@ public class DMLManager {
                                             }
                                         }
                                     }
-                                        System.out.println(String.format("COLS: %s  PKs: %s  Disjoint: %s", columns, currTable.getPK(), Collections.disjoint(columns, currTable.getPK())));
+                                    System.out.println(String.format("COLS: %s  PKs: %s  Disjoint: %s", columns, currTable.getPK(), Collections.disjoint(columns, currTable.getPK())));
                                     if(!Collections.disjoint(columns, currTable.getPK())){
                                         //Check PK
                                         List<String> pk_vals = new LinkedList<>();
@@ -697,7 +697,7 @@ public class DMLManager {
                         }
                     }
                     Object replacement = values.get(tname).get(col_parts[0]);
-                    System.out.println(replacement.toString());
+                    System.out.println(String.format("in EvalWhere: %s", replacement));
                     expr = expr.replaceAll(col, replacement.toString());
                 }else {
                     throw new ConstrainException(String.format("Column '%s' does not exists.", col_parts[0]));
