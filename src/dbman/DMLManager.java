@@ -41,7 +41,7 @@ public class DMLManager {
     private DBObject db;
     private Map<String,MetaTable> currTables = new HashMap<>();
     private LinkedHashMap<String,String> table_aliases = new LinkedHashMap<>();
-    private HashMap<String,LinkedList<String>> hash_tables;
+    private HashMap<String,LinkedList<Integer>> hash_tables;
     /**
      *   
      * @param db 
@@ -86,6 +86,13 @@ public class DMLManager {
                 currTables.put(table, db.getTables().get(table));
             }
         }
+    }
+    
+    private void doneWithTables(int hashes_affected){
+        if(hashes_affected> 0){
+            //refreshHashes(this.getCurrentTable().getName());
+        }
+        doneWithTables();
     }
     
     private void doneWithTables(){
@@ -238,34 +245,15 @@ public class DMLManager {
             return null;
     }
     
-    private boolean isUnique(List<String> valcheck, List<String> columnCheck){
-//        System.out.println(String.format("valcheck: %s, columnCheck: %s", valcheck, columnCheck));
-        ICsvMapReader mapReader;
-        LinkedList<String> hashes = new LinkedList<>();
+    private void refreshPKHashes(){
+        MetaTable currTable = getCurrentTable();
+        LinkedList<Integer> hashes = new LinkedList<>();
+        
+        if(!hash_tables.containsKey(currTable.getName())){
+            hash_tables.put(currTable.getName(), hashes);
+        }
         try {
-            MetaTable currTable = getCurrentTable();
-            /*
-            Aqui miramos si ya habiamos leido el archivo anteriormente. 
-            La idea es reducir las veces en que tenemos que leer el archivo solo para encontrar llaves
-            Tenerlas guardadas y actualizarla cuando se de un cambio es mas eficiente en cuestiones de tiempo
-            de hasta 50~60 segundos.
-            */
-            if(hash_tables.containsKey(currTable.getName())){
-                hashes = hash_tables.get(currTable.getName());
-                String newkey = "";
-                for(String val : valcheck){
-                    newkey += val;
-                }
-                if(hashes.contains(newkey)){
-                    return true;
-                }else{
-                    hashes.add(newkey);
-                    return false;
-                }
-                
-            }else{
-                hash_tables.put(currTable.getName(), hashes);
-            }
+            ICsvMapReader mapReader;
             mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
             
             // the header columns are used as the keys to the Map
@@ -280,28 +268,45 @@ public class DMLManager {
             while( (rowMap = mapReader.read(header, processors)) != null ) {
                     
                     String pk = "";
-                    for(String pk_col : columnCheck){
+                    for(String pk_col : currTable.getPK()){
 //                        System.out.println(String.format("pk_col: %s  rop: %s", pk_col, rowMap.get(pk_col)));
                         pk += rowMap.get(pk_col);
                     }
 //                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s, pk=%s, pkhash=%s", mapReader.getLineNumber(),
 //                            mapReader.getRowNumber(), rowMap, pk, pk.hashCode()));
-                    hashes.add(pk);
+                    hashes.add(pk.hashCode());
             }
             mapReader.close();
-            String newkey = "";
-            for(String val : valcheck){
-                newkey += val;
-            }
-            if(hashes.contains(newkey)){
-                return true;
-            }
-
-        }
-        catch (IOException ex) {
+        }catch (IOException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
-        return false;
+    }
+    
+    private boolean isUniquePK(List<String> valcheck, List<String> columnCheck){
+//        System.out.println(String.format("valcheck: %s, columnCheck: %s", valcheck, columnCheck));
+        
+        LinkedList<Integer> hashes = new LinkedList<>();
+        MetaTable currTable = getCurrentTable();
+        /*
+        Aqui miramos si ya habiamos leido el archivo anteriormente. 
+        La idea es reducir las veces en que tenemos que leer el archivo solo para encontrar llaves
+        Tenerlas guardadas y actualizarla cuando se de un cambio es mas eficiente en cuestiones de tiempo
+        de hasta 50~60 segundos.
+        */
+        if(!hash_tables.containsKey(currTable.getName())){
+            //Si no existe que cree su lista
+            refreshPKHashes();
+        }
+        
+        hashes = hash_tables.get(currTable.getName());
+        
+        String newkey = "";
+        for(String val : valcheck){
+            newkey += val;
+        }
+        System.out.println(String.format("Hashes for %s: %s. Val: %s", currTable.getName(), hashes, newkey.hashCode()));
+        
+        return !hashes.contains(newkey.hashCode());
     }
     
     /**
@@ -379,7 +384,7 @@ public class DMLManager {
                 for(String pkey : currTable.getPK()){
                     pk_vals.add(newRow.get(pkey));
                 }
-                if(isUnique(pk_vals, currTable.getPK())){
+                if(!isUniquePK(pk_vals, currTable.getPK())){
                     throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
                 }
                 
@@ -526,7 +531,7 @@ public class DMLManager {
                                     for(String pkey : currTable.getPK()){
                                         pk_vals.add(rowMap.get(pkey).toString());
                                     }
-                                    if(isUnique(pk_vals, currTable.getPK())){
+                                    if(!isUniquePK(pk_vals, currTable.getPK())){
                                         throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
                                     }
                                 }
@@ -638,8 +643,7 @@ public class DMLManager {
     }
     
     /**
-     * Evaluates a expression according to the API. It evaluates the expression
-     * by check the types 
+     * Evaluates a expression according to the API.
      * @param expr according to the API with full columns name in complete
      * @param values Map got from the DB
      * @return 
@@ -704,7 +708,7 @@ public class DMLManager {
         
         List<String> vals = new LinkedList<>();
         //vals.add("\"9\"");
-        vals.add("\"14\"");
+        vals.add("14");
         //vals.add("");
         
         try {
