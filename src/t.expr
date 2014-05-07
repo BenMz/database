@@ -1,2 +1,2 @@
 USE DATABASE proyecto;
-DELETE FROM sucursal WHERE nombre2 = 'SAN CRIS'
+UPDATE empleado SET comision = 11.0

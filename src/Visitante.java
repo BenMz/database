@@ -1341,9 +1341,14 @@ public class Visitante extends SQLBaseVisitor<Object>{
     @Override
     public Object visitInsertStm(SQLParser.InsertStmContext ctx) {
 
-
+if(!dbm.existsTable(ctx.ID().getText())){
+    mensajes = "Table doesnt exist";
+    all.add(mensajes);
+    return -1;
+}
        
        dbm.workWithTables(ctx.ID().getText());
+       
        LinkedList columns = null;
        try{
         columns = (LinkedList) visit(ctx.idList());
@@ -1369,6 +1374,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
            all.add(mensajes);
            return -1;
         }
+         System.out.println(workingDB.getConstraints(ctx.ID().getText()));
        insertedRows++;
        return null;  //To change body of generated methods, choose Tools | Templates.
     }

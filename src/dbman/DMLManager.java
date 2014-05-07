@@ -12,6 +12,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Hashtable;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -266,6 +267,7 @@ public class DMLManager {
             }else{
                 hash_tables.put(currTable.getName(), hashes);
             }
+//            System.out.println("ghola");
             mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
             
             // the header columns are used as the keys to the Map
@@ -293,6 +295,8 @@ public class DMLManager {
             for(String val : valcheck){
                 newkey += val;
             }
+//            System.out.println("ghola -> "+newkey);
+//            System.out.println(hashes);
             if(hashes.contains(newkey)){
                 return true;
             }
@@ -356,10 +360,12 @@ public class DMLManager {
                             }else {
                                 newRow.put(columns.get(i),valinsert);
                             }
-                        }
+                        }else
+                            newRow.put(columns.get(i),valinsert);
                         
                     }
                 }
+//                System.out.println(newRow);
                 //Check not null
                 Map<String, JSONObject> cols = currTable.getColumns();
 //                System.out.println(currTable.getPK());
@@ -368,6 +374,7 @@ public class DMLManager {
                         throw new ConstrainException(String.format("Insert violates NOT NULL constraint on column '%s' of table '%s'.", 
                                 col,  currTable.getName()));
                     }
+//                    System.out.println("puta "+col+" -> "+newRow.get(col));
                     if(newRow.get(col) == null && currTable.getPK().contains(col)){
                         throw new ConstrainException(String.format("Insert violates PRIMARY KEY constraint on column '%s', cannot be NULL", col));
                     }
@@ -470,6 +477,11 @@ public class DMLManager {
         if(columns.size() != values.size()){
             throw new ConstrainException(String.format("Values passed (%s) do not corresond to the specified columns (%s).", columns.size(), values.size()));
         }
+        LinkedList<String> changingCols = new LinkedList();
+        for(Iterator<String> it = columns.iterator(); it.hasNext();) {
+                changingCols.add(it.next());
+        }
+        
         int updatedRows = 0;
         ICsvMapReader mapReader;
         ICsvMapWriter mapWriter;
@@ -499,7 +511,9 @@ public class DMLManager {
                     if(validation == null || this.evalWhere(validation, data)){
                         //Cambiamos los valores de la file para actualizar
                         for(int i = 0; i<columns.size(); i++){
+                           
                             if(this.existsColumn(currTable.getName(), columns.get(i))==1){
+                                
                                 JSONObject column = this.getColumn(currTable.getName(), columns.get(i));
                                 String coltype = column.get("type").toString();
                                 String valinsert = this.castVal(coltype, values.get(i));
@@ -516,18 +530,22 @@ public class DMLManager {
                                     //Check not null
                                     Map<String, JSONObject> cols = currTable.getColumns();
                                     for(String col : cols.keySet()){
-                                        if(rowMap.get(col) == null && cols.get(col).get("notNull").equals("true")){
+                                        if(col.equals(column.get(i))&& rowMap.get(col) == null && cols.get(col).get("notNull").equals("true")){
                                             throw new ConstrainException(String.format("Insert violates NOT NULL constraint on column '%s' of table '%s'.", 
                                                     col,  currTable.getName()));
                                         }
                                     }
                                     //Check PK
+                                    
                                     List<String> pk_vals = new LinkedList<>();
-                                    for(String pkey : currTable.getPK()){
-                                        pk_vals.add(rowMap.get(pkey).toString());
-                                    }
-                                    if(isUnique(pk_vals, currTable.getPK())){
-                                        throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
+                                    //SOLO REVISA SI SE ESTA CAMBIANDO LA PK
+                                    if(pk_vals.contains(column.get(i))){ 
+                                        for(String pkey : currTable.getPK()){
+                                            pk_vals.add(rowMap.get(pkey).toString());
+                                        }
+                                        if(isUnique(pk_vals, currTable.getPK())){
+                                            throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
+                                        }
                                     }
                                 }
                             }else {
