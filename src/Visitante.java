@@ -53,6 +53,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
     private int updatedRows = 0;
     private boolean modoEval = false;
     private LinkedList validatingCol = null;
+           DMLManager dbm = null;
     
 
     
@@ -392,7 +393,11 @@ public class Visitante extends SQLBaseVisitor<Object>{
     @Override
     public Object visitDeleteStm(SQLParser.DeleteStmContext ctx) {
 
-       DMLManager dbm = new DMLManager(workingDB);
+       if(!workingDB.getTables().containsKey(ctx.ID().getText())){
+           mensajes="Table "+ctx.ID().getText()+" doesn't exist";
+           all.add(mensajes);
+           return -1;
+       }
        dbm.workWithTables(ctx.ID().getText());
        String where = (String) visit(ctx.whereClause());
        int result = 0;
@@ -591,11 +596,11 @@ public class Visitante extends SQLBaseVisitor<Object>{
     @Override
     public Object visitMulExp(SQLParser.MulExpContext ctx) {
        LinkedList lista = new LinkedList();
-       lista.push(ctx.expression().getText()); //agregar el id;
-       LinkedList result = (LinkedList) visitChildren(ctx);
+       lista.add(ctx.expression().getText()); //agregar el id;
+       LinkedList result = (LinkedList) visit(ctx.exprList());
        Iterator it = result.iterator();
        while(it.hasNext())
-           lista.push(it.next());
+           lista.add(it.next());
        return lista;  //To change body of generated methods, choose Tools | Templates.
     }
     
@@ -662,7 +667,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
                     return "{"+ctx.ID(0)+"} ";
             }
             if(ctx.getText().matches("^'(19|20)\\d\\d[\\-\\/.](0[1-9]|1[012])[\\-\\/.](0[1-9]|[12][0-9]|3[01])'$"))
-               return ctx.getText().replace("'", "");
+               return ctx.getText();
 
            return ctx.getText();  
         }
@@ -671,7 +676,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
    @Override
     public Object visitSingleMember(SQLParser.SingleMemberContext ctx) {
        LinkedList lista = new LinkedList();
-       lista.add(ctx.idMember().getText()); //agregar el id;
+       lista.push(ctx.idMember().getText()); //agregar el id;
        return lista;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -820,6 +825,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
            return -1;
        }
         workingDB = new DB(ctx.ID().getText());
+         dbm = new DMLManager(workingDB);
         mensajes = "Usando la base de datos "+workingDB.getName();
         all.add(mensajes);
         return null;  //To change body of generated methods, choose Tools | Templates.
@@ -1029,14 +1035,14 @@ public class Visitante extends SQLBaseVisitor<Object>{
 //        System.out.println(arrayConstraints);
 //        System.exit(0);
         workingDB.createTable(newTable,arrayConstraints);
-	try {
- 
-		FileWriter file = new FileWriter("src/db/"+workingDB.getName()+"/"+ctx.ID().getText()+".csv");
-                 
- 
-	} catch (IOException e) {
-		e.printStackTrace();
-	}  
+//	try {
+// 
+//		FileWriter file = new FileWriter("src/db/"+workingDB.getName()+"/"+ctx.ID().getText()+".csv");
+//                 
+// 
+//	} catch (IOException e) {
+//		e.printStackTrace();
+//	}  
         mensajes = "Tabla "+ctx.ID()+" creada";
        all.add(mensajes);
        return null;  //To change body of generated methods, choose Tools | Templates.
@@ -1328,20 +1334,26 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitInsertStm(SQLParser.InsertStmContext ctx) {
-       if(workingDB==null){
-           mensajes = "Not using any database";
-           all.add(mensajes);
-           return -1;
-       }
-       DMLManager dbm = new DMLManager(workingDB);
+
+
        
        dbm.workWithTables(ctx.ID().getText());
        LinkedList columns = null;
        try{
         columns = (LinkedList) visit(ctx.idList());
+           for (Iterator it = columns.iterator(); it.hasNext();) {
+               String column = (String) it.next();
+               if(!workingDB.getTables().get(ctx.ID().getText()).getColumns().containsKey(column)){
+                   mensajes="column "+column+" doesn't exist in table "+ctx.ID().getText();
+                   all.add(mensajes);
+                   return -1;
+               }
+               
+           }
        }catch(Exception e){
           columns = null;
        }
+       
        LinkedList values = (LinkedList) visit(ctx.exprList());
 //       System.out.println(values);
         try {

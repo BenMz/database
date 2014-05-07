@@ -14,4 +14,5 @@ import java.util.Map;
  */
 public interface DBObject {
     public Map<String,MetaTable> getTables();
+    
 }

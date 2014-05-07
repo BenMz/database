@@ -7,6 +7,7 @@
 package dbman;
 
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -21,8 +22,10 @@ public class Table implements MetaTable {
     private String name;
     private HashMap<String,JSONObject> columns ; //JSONObject es un HashMap, puede tratarse como tal. El string es el nombre
     private LinkedList<String> PK;
+    private String[] orderedColumns;
     private String database;
     private long records;
+    private HashMap<String,HashMap<String,String>> pk;
     
     public Table (String name,String database, long records){
         this.name=name;
@@ -87,6 +90,29 @@ public class Table implements MetaTable {
     @Override
     public String physicalLocation() {
         return "src/db/"+database+"/"+name+".csv";//To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public String[] getOrderedColumns() {
+        return orderedColumns;
+        
+    }
+    
+    @Override
+    public void setOrderedColumns(JSONArray cols){
+       String [] columnas = new String[cols.size()];
+       int i = 0;
+        for (Iterator it = cols.iterator(); it.hasNext();) {
+            JSONObject column = (JSONObject) it.next();
+            columnas[i] = (String) column.get("name");
+            i++;
+        }
+        orderedColumns = columnas;
+    }
+
+    @Override
+    public boolean hasPK(String column, String value) {
+       return pk.get(column).containsKey(value); //To change body of generated methods, choose Tools | Templates.
     }
     
 }

@@ -62,11 +62,14 @@ public class DB implements DBObject {
         
         Iterator<JSONObject> iterator = msg.iterator();
         
+        
         while (iterator.hasNext()) {
            
             JSONObject tabla = iterator.next();
+           
             Table meta = new Table((String) tabla.get("name"),name, (long) tabla.get("records")); 
             JSONArray columnas = (JSONArray) tabla.get("columns");
+            meta.setOrderedColumns(columnas);
             Iterator<JSONObject> iterator2 = columnas.iterator();
              HashMap<String, JSONObject> columns = new HashMap();
             while (iterator2.hasNext()) { 
@@ -142,7 +145,7 @@ public class DB implements DBObject {
             case "FLOAT":
                 return "0.0";
             case "DATE":
-                return "\"0000-00-00\"";
+                return "0000-00-00";
             default:
                 return "";
         }
@@ -159,6 +162,7 @@ public class DB implements DBObject {
                 JSONArray columnas = (JSONArray) tabla.get("columns");
                 columnas.add(column);
                 tabla.put("columns", columnas);
+                tables.get(table).setOrderedColumns(columnas);
                 for(int i=0;i<columnas.size();i++){
                     JSONObject temp = (JSONObject) columnas.get(i);
                     listColumns.add((String) temp.get("name"));
@@ -519,4 +523,27 @@ public class DB implements DBObject {
     public LinkedList<JSONObject> getConstraints(String table){
         return this.constraints.get(table);
     }
+    
+   
+    public String[] getColumnsFix(String table){
+        jsonObject = readFile();
+        JSONArray tablas = (JSONArray) jsonObject.get("tablas");
+        for (Iterator<JSONObject> it1 = tablas.iterator(); it1.hasNext();) {
+           JSONObject tabla = it1.next();
+           if(tabla.get("name").equals(table)){
+               JSONArray columnas = (JSONArray) tabla.get("columns");
+               String[] columns = new String[columnas.size()];
+               int i = 0;
+               for (Iterator it = columnas.iterator(); it.hasNext();) {
+                  JSONObject columna = (JSONObject) it.next();
+                   columns[i] = (String) columna.get("name");
+                   i++;
+               }
+               return columns;
+           }
+        }
+        
+        return null;
+    }
+    
 }

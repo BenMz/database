@@ -11,6 +11,7 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Hashtable;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -40,11 +41,13 @@ public class DMLManager {
     private DBObject db;
     private Map<String,MetaTable> currTables = new HashMap<>();
     private LinkedHashMap<String,String> table_aliases = new LinkedHashMap<>();
+    private HashMap<String,LinkedList<String>> hash_tables;
     /**
      *   
      * @param db 
      */
     public DMLManager(DBObject db){
+        hash_tables = new HashMap();
         this.db = db;
         
         //Create empty files with headers if not already there
@@ -56,10 +59,12 @@ public class DMLManager {
                         //Prepare for writing
                         mapWriter = new CsvMapWriter(new FileWriter(table.physicalLocation()),
                                 CsvPreference.STANDARD_PREFERENCE);
-                        String [] header = table.getColumns().keySet().toArray(new String[table.getColumns().keySet().size()]);
+                        String [] header = table.getOrderedColumns();
+                    
+//                        String [] header = table.getColumns().keySet()..toArray(new String[table.getColumns().keySet().size()]);
 
                         CellProcessor[] processors = new CellProcessor[header.length];
-
+                        
                         // write the header
                         mapWriter.writeHeader(header);
                         mapWriter.close();
@@ -178,14 +183,14 @@ public class DMLManager {
     }
     
     public String getValType(String val){
-        System.out.println("getValType: "+val);
-        if(val == null || val.equals("NULL") || val.equals("")){
+//        System.out.println("getValType: "+val);
+        if(val == null || val.equals("NULL") || val.equals("'NULL'") || val.equals("")){
             return "NULL";
         }else if(val.matches("[0-9]+")){
             return "INT";
         } else if(val.matches("[0-9]*\\.[0-9]*") && val.length()>1){
             return "FLOAT";
-        } else if(val.matches("^(19|20)\\d\\d[\\-\\/.](0[1-9]|1[012])[\\-\\/.](0[1-9]|[12][0-9]|3[01])$")) {
+        } else if(val.matches("^'(19|20)\\d\\d[\\-\\/.](0[1-9]|1[012])[\\-\\/.](0[1-9]|[12][0-9]|3[01])'$")) {
             return "DATE";
         } else if(val.startsWith("'") && val.endsWith("'") || val.startsWith("\"") && val.endsWith("\"")) {
             return "CHAR";
@@ -196,25 +201,59 @@ public class DMLManager {
     
     private String prepareValInsert(String coltype, String value){
         String valtype = this.getValType(value);
+        if(coltype.equals("CHAR"))
+            if(valtype.equals("INT")||valtype.equals("FLOAT"))
+                return "'"+value+"'";
+            else
+                return value;
+        if(valtype.equals("NULL"))
+            return "";
         if(coltype.equals(valtype)){
             return value;
-        }else if((coltype.equals("CHAR") || coltype.equals("DATE")) && valtype.equals("NULL")){
+        }else if(coltype.equals("DATE") && valtype.equals("CHAR") && value.matches("^'(19|20)\\d\\d[\\-\\/.](0[1-9]|1[012])[\\-\\/.](0[1-9]|[12][0-9]|3[01])'$")){
             return value;
         }else if(coltype.equals("INT") && valtype.equals("FLOAT")){
             return value.split("\\.")[0];
         } else if(coltype.equals("FLOAT") && valtype.equals("INT")){
             return value+".00";
-        }else {
-            return null;
+        }else if(valtype.equals("CHAR")) {
+            value = value.replace("'", "");
+            valtype = getValType(value);
+//           System.out.println("Value type "+valtype+" and "+coltype);
+            if(coltype.equals(valtype))
+                return value;
+            if(coltype.equals("INT") && valtype.equals("FLOAT")){
+                return value.split("\\.")[0];
+            } else if(coltype.equals("FLOAT") && valtype.equals("INT")){
+                return value+".00";
         }
+            
+        }
+            return null;
     }
     
     private boolean isUnique(List<String> valcheck, List<String> columnCheck){
-        System.out.println(String.format("valcheck: %s, columnCheck: %s", valcheck, columnCheck));
+//        System.out.println(String.format("valcheck: %s, columnCheck: %s", valcheck, columnCheck));
         ICsvMapReader mapReader;
         LinkedList<String> hashes = new LinkedList<>();
         try {
             MetaTable currTable = getCurrentTable();
+            if(hash_tables.containsKey(currTable.getName())){
+                hashes = hash_tables.get(currTable.getName());
+                String newkey = "";
+                for(String val : valcheck){
+                    newkey += val;
+                }
+                if(hashes.contains(newkey)){
+                    return true;
+                }else{
+                    hashes.add(newkey);
+                    return false;
+                }
+                
+            }else{
+                hash_tables.put(currTable.getName(), hashes);
+            }
             mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
             
             // the header columns are used as the keys to the Map
@@ -222,7 +261,7 @@ public class DMLManager {
             //columnCheck.toArray(new String[columnCheck.size()]);
             final CellProcessor[] processors =  new CellProcessor[header.length];
             
-            System.out.println(String.format("Header size: %s  Processor size: %s", header.length, processors.length));
+//            System.out.println(String.format("Header size: %s  Processor size: %s", header.length, processors.length));
             
             Map<String, Object> rowMap;
             //Mientras haya que leer
@@ -230,11 +269,11 @@ public class DMLManager {
                     
                     String pk = "";
                     for(String pk_col : columnCheck){
-                        System.out.println(String.format("pk_col: %s  rop: %s", pk_col, rowMap.get(pk_col)));
+//                        System.out.println(String.format("pk_col: %s  rop: %s", pk_col, rowMap.get(pk_col)));
                         pk += rowMap.get(pk_col);
                     }
-                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s, pk=%s, pkhash=%s", mapReader.getLineNumber(),
-                            mapReader.getRowNumber(), rowMap, pk, pk.hashCode()));
+//                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s, pk=%s, pkhash=%s", mapReader.getLineNumber(),
+//                            mapReader.getRowNumber(), rowMap, pk, pk.hashCode()));
                     hashes.add(pk);
             }
             mapReader.close();
@@ -272,8 +311,8 @@ public class DMLManager {
                 MetaTable currTable = this.getCurrentTable();
                 //Locate physical file
                 String fileURL = currTable.physicalLocation();
-                System.out.println(String.format("Tname: %s, cols: %s", currTable.getName(), currTable.getColumns()));
-                String [] header = currTable.getColumns().keySet().toArray(new String[currTable.getColumns().keySet().size()]);
+//                System.out.println(String.format("Tname: %s, cols: %s", currTable.getName(), currTable.getColumns()));
+                String [] header = currTable.getOrderedColumns();
                 
                 //If it's an implicit column list, we assign them from the originals
                 if(columns == null){
@@ -282,34 +321,39 @@ public class DMLManager {
                         columns.add(header[i]);
                     }
                 }
+                
                 //Prepare to store in CSV
                 Map<String, String> newRow = new LinkedHashMap<>();
                 
                 for(int i = 0; i<columns.size(); i++){
                     JSONObject column = this.getColumn(currTable.getName(), columns.get(i));
+//                    System.out.println(column);
                     String coltype = column.get("type").toString();
                     String valinsert = this.prepareValInsert(coltype, values.get(i));
                     if(valinsert == null){
                         throw new ConstrainException(String.format("Incompatible types: column '%s' is type %s and '%s' is %s", columns.get(i), 
                                 this.getColumnType(currTable.getName(), columns.get(i)), values.get(i), this.getValType(values.get(i))));
                     }else {
-                        System.out.println("CHAR SIZE "+Integer.parseInt(column.get("size").toString()) +"  "+this.getValType(valinsert) );
-                        if(this.getValType(valinsert).equals("CHAR") && Integer.parseInt(column.get("size").toString()) < valinsert.length()-2){
-                            throw new ConstrainException(String.format("Invalid CHAR size %s for columns '%s'", valinsert.length()-2, column.get("name").toString()));
-                        }else {
-                            newRow.put(columns.get(i),valinsert);
+                        if(coltype.equals("CHAR")){
+    //                        System.out.println("CHAR SIZE "+Integer.parseInt(column.get("size").toString()) +"  "+this.getValType(valinsert) );
+                            if(this.getValType(valinsert).equals("CHAR") && Integer.parseInt(column.get("size").toString()) < valinsert.length()-2){
+                                throw new ConstrainException(String.format("Invalid CHAR size %s for columns '%s'", valinsert.length()-2, column.get("name").toString()));
+                            }else {
+                                newRow.put(columns.get(i),valinsert);
+                            }
                         }
                         
                     }
                 }
                 //Check not null
                 Map<String, JSONObject> cols = currTable.getColumns();
+//                System.out.println(currTable.getPK());
                 for(String col : cols.keySet()){
                     if(newRow.get(col) == null && cols.get(col).get("notNull").equals("true")){
                         throw new ConstrainException(String.format("Insert violates NOT NULL constraint on column '%s' of table '%s'.", 
                                 col,  currTable.getName()));
                     }
-                    if(currTable.getPK().contains(col)){
+                    if(newRow.get(col) == null && currTable.getPK().contains(col)){
                         throw new ConstrainException(String.format("Insert violates PRIMARY KEY constraint on column '%s', cannot be NULL", col));
                     }
                 }
@@ -360,7 +404,7 @@ public class DMLManager {
             mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
             mapWriter = new CsvMapWriter(new FileWriter(tempFile), CsvPreference.STANDARD_PREFERENCE);
             
-            System.out.println(currTable.getName() + currTable.physicalLocation());
+//            System.out.println(currTable.getName() + currTable.physicalLocation());
             
             // the header columns are used as the keys to the Map
             final String[] header = mapReader.getHeader(true);
@@ -371,8 +415,8 @@ public class DMLManager {
                 Map<String, Object> rowMap;
                 //Mientras haya que leer
                 while( (rowMap = mapReader.read(header, processors)) != null ) {
-                        System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
-                                mapReader.getRowNumber(), rowMap));
+//                        System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+//                                mapReader.getRowNumber(), rowMap));
                         //Preparamos objeto como lo espera el evalWhere
                         Map<String, Map<String, Object>> data = new HashMap<>();
                         data.put(currTable.getName(), rowMap);
@@ -416,7 +460,7 @@ public class DMLManager {
             mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
             mapWriter = new CsvMapWriter(new FileWriter(tempFile), CsvPreference.STANDARD_PREFERENCE);
             
-            System.out.println(currTable.getName() + currTable.physicalLocation());
+//            System.out.println(currTable.getName() + currTable.physicalLocation());
             
             // the header columns are used as the keys to the Map
             final String[] header = mapReader.getHeader(true);
@@ -426,8 +470,8 @@ public class DMLManager {
             Map<String, Object> rowMap;
             //Mientras haya que leer
             while( (rowMap = mapReader.read(header, processors)) != null ) {
-                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
-                            mapReader.getRowNumber(), rowMap));
+//                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+//                            mapReader.getRowNumber(), rowMap));
 
                     //Preparamos objeto como lo espera el evalWhere
                     Map<String, Map<String, Object>> data = new HashMap<>();
@@ -485,21 +529,21 @@ public class DMLManager {
      */
     public List<Map<String, Object>> select(List<String> columns, String validation, String orderBy, int orderIn) throws ConstrainException{
         LinkedList<LinkedList<Map<String, Object>>> partial_results = new LinkedList<>();
-        System.out.println(String.format("SELECT: %s", this.currTables.keySet()));
+//        System.out.println(String.format("SELECT: %s", this.currTables.keySet()));
         for(MetaTable selTable : this.currTables.values()){
-            System.out.println("Select");
-            System.out.println(selTable.getName());
+//            System.out.println("Select");
+//            System.out.println(selTable.getName());
             //Juntamos header para lectura parcial
             List<String> partial_header  = new LinkedList<>();
             for(String col : columns){
                 if(this.existsColumn(selTable.getName(), col) == 1){
-                    System.out.println(col);
-                    partial_header.add(col);
+//                    System.out.println(col);
+//                    partial_header.add(col);
                 }else if(this.existsColumn(selTable.getName(), col) == 2){
                     throw new ConstrainException(String.format("Column %s is ambiguous.", col));
                 }
             }
-            System.out.println(String.format("Partial header: %s", partial_header));
+//            System.out.println(String.format("Partial header: %s", partial_header));
             
             LinkedList<Map<String, Object>> partial_result = new LinkedList<>();
             //Leemos del archivo
@@ -514,15 +558,15 @@ public class DMLManager {
                 Map<String, Object> rowMap;
                 //Mientras haya que leer
                 while( (rowMap = mapReader.read(header, processors)) != null ) {
-                        System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
-                                mapReader.getRowNumber(), rowMap));
+//                        System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+//                                mapReader.getRowNumber(), rowMap));
                         //Preparamos objeto como lo espera el evalWhere
                         Map<String, Map<String, Object>> data = new HashMap<>();
                         data.put(currTable.getName(), rowMap);
                         //Si se cumple con el where
                         if(validation == null || this.evalWhere(validation, data)){
                             Map<String, Object> selMap = new HashMap<>();
-                            System.out.println(String.format("\nFull: %s", rowMap));
+//                            System.out.println(String.format("\nFull: %s", rowMap));
                             for(String fh : header){
                                 if(partial_header.contains(fh)){
                                     selMap.put(fh, rowMap.get(fh));
@@ -532,7 +576,7 @@ public class DMLManager {
                         }
                 }
                 mapReader.close();
-                System.out.println(String.format("Partial: %s", partial_result));
+//                System.out.println(String.format("Partial: %s", partial_result));
                 partial_results.add(partial_result);
 
             }

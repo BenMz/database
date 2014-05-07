@@ -1,2 +1,2 @@
 USE DATABASE proyecto;
-INSERT INTO empleado VALUES (1,'Juan',5.0)
+DELETE FROM sucursal WHERE nombre2 = 'SAN CRIS'
