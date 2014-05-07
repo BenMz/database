@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Iterator;
@@ -42,7 +43,7 @@ public class DMLManager {
     private DBObject db;
     private Map<String,MetaTable> currTables = new HashMap<>();
     private LinkedHashMap<String,String> table_aliases = new LinkedHashMap<>();
-    private HashMap<String,LinkedList<String>> hash_tables;
+    private HashMap<String,LinkedList<Integer>> hash_tables;
     /**
      *   
      * @param db 
@@ -87,6 +88,13 @@ public class DMLManager {
                 currTables.put(table, db.getTables().get(table));
             }
         }
+    }
+    
+    private void doneWithTables(int hashes_affected){
+        if(hashes_affected> 0){
+            //refreshHashes(this.getCurrentTable().getName());
+        }
+        doneWithTables();
     }
     
     private void doneWithTables(){
@@ -239,10 +247,13 @@ public class DMLManager {
             return null;
     }
     
-    private boolean isUnique(List<String> valcheck, List<String> columnCheck){
-//        System.out.println(String.format("valcheck: %s, columnCheck: %s", valcheck, columnCheck));
-        ICsvMapReader mapReader;
-        LinkedList<String> hashes = new LinkedList<>();
+    private void refreshPKHashes(){
+        MetaTable currTable = getCurrentTable();
+        LinkedList<Integer> hashes = new LinkedList<>();
+        
+        if(!hash_tables.containsKey(currTable.getName())){
+            hash_tables.put(currTable.getName(), hashes);
+        }
         try {
             MetaTable currTable = getCurrentTable();
             /*
@@ -282,13 +293,13 @@ public class DMLManager {
             while( (rowMap = mapReader.read(header, processors)) != null ) {
                     
                     String pk = "";
-                    for(String pk_col : columnCheck){
+                    for(String pk_col : currTable.getPK()){
 //                        System.out.println(String.format("pk_col: %s  rop: %s", pk_col, rowMap.get(pk_col)));
                         pk += rowMap.get(pk_col);
                     }
 //                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s, pk=%s, pkhash=%s", mapReader.getLineNumber(),
 //                            mapReader.getRowNumber(), rowMap, pk, pk.hashCode()));
-                    hashes.add(pk);
+                    hashes.add(pk.hashCode());
             }
             mapReader.close();
             String newkey = "";
@@ -305,7 +316,30 @@ public class DMLManager {
         catch (IOException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
-        return false;
+    }
+    
+    private boolean isUniquePK(List<String> valcheck, List<String> columnCheck){
+        LinkedList<Integer> hashes;
+        MetaTable currTable = getCurrentTable();
+        /*
+        Aqui miramos si ya habiamos leido el archivo anteriormente. 
+        La idea es reducir las veces en que tenemos que leer el archivo solo para encontrar llaves
+        Tenerlas guardadas y actualizarla cuando se de un cambio es mas eficiente en cuestiones de tiempo
+        de hasta 50~60 segundos.
+        */
+        if(!hash_tables.containsKey(currTable.getName())){
+            //Si no existe que cree su lista
+            refreshPKHashes();
+        }
+        
+        hashes = hash_tables.get(currTable.getName());
+        
+        String newkey = "";
+        for(String val : valcheck){
+            newkey += val;
+        }
+        
+        return !hashes.contains(newkey.hashCode());
     }
     
     /**
@@ -316,10 +350,6 @@ public class DMLManager {
      * @throws ConstrainException 
      */
     public int insert(List<String> values, List<String> columns) throws ConstrainException{
-//        if(this.verbose){
-//            System.out.println(String.format("INSERT: values %s, columns %s", values, columns));
-//        }
-        //TODO: check contrains
         int insertedRows = 0;
         if(this.currTables.size() != 1){
             throw new ConstrainException("Invalid working table: "+this.currTables.keySet());
@@ -342,11 +372,10 @@ public class DMLManager {
                 }
                 
                 //Prepare to store in CSV
-                Map<String, String> newRow = new LinkedHashMap<>();
+                Map<String, Object> newRow = new LinkedHashMap<>();
                 
                 for(int i = 0; i<columns.size(); i++){
                     JSONObject column = this.getColumn(currTable.getName(), columns.get(i));
-//                    System.out.println(column);
                     String coltype = column.get("type").toString();
                     String valinsert = this.castVal(coltype, values.get(i));
                     if(valinsert == null){
@@ -354,54 +383,66 @@ public class DMLManager {
                                 this.getColumnType(currTable.getName(), columns.get(i)), values.get(i), this.getValType(values.get(i))));
                     }else {
                         if(coltype.equals("CHAR")){
-    //                        System.out.println("CHAR SIZE "+Integer.parseInt(column.get("size").toString()) +"  "+this.getValType(valinsert) );
                             if(this.getValType(valinsert).equals("CHAR") && Integer.parseInt(column.get("size").toString()) < valinsert.length()-2){
                                 throw new ConstrainException(String.format("Invalid CHAR size %s for columns '%s'", valinsert.length()-2, column.get("name").toString()));
-                            }else {
-                                newRow.put(columns.get(i),valinsert);
                             }
                         }else
                             newRow.put(columns.get(i),valinsert);
                         
                     }
                 }
-//                System.out.println(newRow);
-                //Check not null
                 Map<String, JSONObject> cols = currTable.getColumns();
-//                System.out.println(currTable.getPK());
                 for(String col : cols.keySet()){
+                    //Check not null
                     if(newRow.get(col) == null && cols.get(col).get("notNull").equals("true")){
                         throw new ConstrainException(String.format("Insert violates NOT NULL constraint on column '%s' of table '%s'.", 
                                 col,  currTable.getName()));
                     }
-//                    System.out.println("puta "+col+" -> "+newRow.get(col));
+//                System.out.println(newRow);
+                //Check not null
                     if(newRow.get(col) == null && currTable.getPK().contains(col)){
                         throw new ConstrainException(String.format("Insert violates PRIMARY KEY constraint on column '%s', cannot be NULL", col));
+                    }
+                    //Check CHECK
+                    List<JSONObject> chks = db.getCH(currTable.getName(), col);
+                    if(chks.size() > 0){
+                        //Ponemos la data para el evalwhere
+                        Map<String, Map<String, Object>> data = new HashMap<>();
+                        data.put(currTable.getName(), newRow);
+                        //Si no cumple con el while
+                        for(JSONObject chk : chks){
+                            System.out.println("chk"+chk.toJSONString()+"  "+chk.get("expression"));
+                            if(!this.evalWhere((String) chk.get("expression"), data)){
+                                throw new  ConstrainException(String.format("Insert violates '%s' CHECK", chk.get("name")));
+                            }
+                        }
                     }
                 }
                 
                 //Check PK
                 List<String> pk_vals = new LinkedList<>();
-                //File the values for the row on the PK
                 for(String pkey : currTable.getPK()){
-                    pk_vals.add(newRow.get(pkey));
+                    pk_vals.add((String) newRow.get(pkey));
                 }
-                if(isUnique(pk_vals, currTable.getPK())){
+                if(!isUniquePK(pk_vals, currTable.getPK())){
                     throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
                 }
                 
+                
                 ICsvMapWriter mapWriter = null;
                 try {   
-                        //Prepare for writing
-                        mapWriter = new CsvMapWriter(new FileWriter(fileURL, true),
-                                CsvPreference.STANDARD_PREFERENCE);
+                    //Prepare for writing
+                    mapWriter = new CsvMapWriter(new FileWriter(fileURL, true),
+                            CsvPreference.STANDARD_PREFERENCE);
 
-                        // assign a default value for married (if null), and write numberOfKids as an empty column if null
-                        CellProcessor[] processors = new CellProcessor[columns.size()];
+                    // assign a default value for married (if null), and write numberOfKids as an empty column if null
+                    CellProcessor[] processors = new CellProcessor[columns.size()];
 
-                        // write the customer Maps
-                        mapWriter.write(newRow, header);
-                        mapWriter.close();
+                    // write the customer Maps
+                    mapWriter.write(newRow, header);
+                    mapWriter.close();
+                    this.hash_tables.get(currTable.getName()).add(pk_vals.hashCode());
+                    insertedRows = 1;
 
                 } catch (IOException ex) {
                     Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
@@ -530,23 +571,26 @@ public class DMLManager {
                                     //Check not null
                                     Map<String, JSONObject> cols = currTable.getColumns();
                                     for(String col : cols.keySet()){
-                                        if(col.equals(column.get(i))&& rowMap.get(col) == null && cols.get(col).get("notNull").equals("true")){
+//                    System.out.println("puta "+col+" -> "+newRow.get(col));
                                             throw new ConstrainException(String.format("Insert violates NOT NULL constraint on column '%s' of table '%s'.", 
                                                     col,  currTable.getName()));
                                         }
-                                    }
-                                    //Check PK
-                                    
-                                    List<String> pk_vals = new LinkedList<>();
-                                    //SOLO REVISA SI SE ESTA CAMBIANDO LA PK
-                                    if(pk_vals.contains(column.get(i))){ 
-                                        for(String pkey : currTable.getPK()){
-                                            pk_vals.add(rowMap.get(pkey).toString());
+                                        System.out.println(String.format("newRow: %s", rowMap));
+                                        if(rowMap.get(col) == null && currTable.getPK().contains(col)){
+                                            throw new ConstrainException(String.format("Insert violates PRIMARY KEY constraint on column '%s', cannot be NULL", col));
                                         }
-                                        if(isUnique(pk_vals, currTable.getPK())){
-                                            throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
+                                        //Check CHECK
+                                        List<JSONObject> chks = db.getCH(currTable.getName(), col);
+                                        if(chks.size() > 0){
+                                            //Si no cumple con el while
+                                            for(JSONObject chk : chks){
+                                                if(!this.evalWhere((String) chk.get("expression"), data)){
+                                                    throw new  ConstrainException(String.format("Update violates '%s' CHECK", chk.get("name")));
+                                                }
+                                            }
                                         }
                                     }
+                                        if(col.equals(column.get(i))&& rowMap.get(col) == null && cols.get(col).get("notNull").equals("true")){
                                 }
                             }else {
                                 throw new ConstrainException(String.format("Columns '%s' does not exists on table '%s'", columns.get(i), currTable.getName()));
@@ -656,8 +700,7 @@ public class DMLManager {
     }
     
     /**
-     * Evaluates a expression according to the API. It evaluates the expression
-     * by check the types 
+     * Evaluates a expression according to the API.
      * @param expr according to the API with full columns name in complete
      * @param values Map got from the DB
      * @return 
@@ -683,6 +726,7 @@ public class DMLManager {
                         }
                     }
                     Object replacement = values.get(tname).get(col_parts[0]);
+                    System.out.println(String.format("in EvalWhere: %s", replacement));
                     expr = expr.replaceAll(col, replacement.toString());
                 }else {
                     throw new ConstrainException(String.format("Column '%s' does not exists.", col_parts[0]));
@@ -712,22 +756,26 @@ public class DMLManager {
     
     
     public static void main(String[] args){
-        DMLManager dbm = new DMLManager(new DB("foo"));
-        dbm.workWithTables("prueba2");
+        DB db = new DB("proyecto");
+        DMLManager dbm = new DMLManager(db);
+        dbm.workWithTables("empleado");
+        
         
         List<String> cols = new LinkedList<>();
-        //cols.add("b");
-        cols.add("a");
-        //cols.add("b");
+        cols.add("id");
+        //cols.add("id");
+        
         
         List<String> vals = new LinkedList<>();
-        //vals.add("\"9\"");
-        vals.add("\"14\"");
-        //vals.add("");
+        vals.add("12");
+        //vals.add("11");
+        
         
         try {
-            //dbm.insert(vals, cols);
-            dbm.update(vals, cols, "{a}==13");
+            dbm.insert(vals, cols);
+            vals.set(0, "13");
+            dbm.insert(vals, cols);
+            //dbm.update(vals, cols, "{nombre}==\'Pedro\'");
             //dbm.delete("{MMM.t} < 3");
             //dbm.update(cols, vals, "{a} > 2");
             
@@ -738,3 +786,28 @@ public class DMLManager {
     }
     
 }
+                                    //Check PK
+                                    
+                                    List<String> pk_vals = new LinkedList<>();
+                                    //SOLO REVISA SI SE ESTA CAMBIANDO LA PK
+                                    if(pk_vals.contains(column.get(i))){ 
+                                        for(String pkey : currTable.getPK()){
+                                            pk_vals.add(rowMap.get(pkey).toString());
+                                        }
+                                        if(isUnique(pk_vals, currTable.getPK())){
+                                            throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
+                                        }
+                                    }
+                                    System.out.println(String.format("COLS: %s  PKs: %s  Disjoint: %s", columns, currTable.getPK(), Collections.disjoint(columns, currTable.getPK())));
+                                    if(!Collections.disjoint(columns, currTable.getPK())){
+                                        //Check PK
+                                        List<String> pk_vals = new LinkedList<>();
+                                        for(String pkey : currTable.getPK()){
+                                            pk_vals.add(rowMap.get(pkey).toString());
+                                        }
+                                        if(!isUniquePK(pk_vals, currTable.getPK())){
+                                            throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
+                                        }
+                                    }
+                
+                                    

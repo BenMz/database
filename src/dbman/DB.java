@@ -524,6 +524,19 @@ public class DB implements DBObject {
         return this.constraints.get(table);
     }
     
+    public List<JSONObject> getCH(String table, String column){
+        List<JSONObject> res = new LinkedList<>();
+        for(JSONObject constraint : getConstraints(table)){
+            JSONArray cols = (JSONArray) constraint.get("columns");
+            System.out.println(String.format("getCH: table: %s  cols: %s  ",table, cols, ((String) constraint.get("type")).equals("check")));
+            if(constraint.get("type").equals("check") && cols.contains(column)){
+                res.add(constraint);
+            }
+        }
+        System.out.println(String.format(">>%s", res));
+        return res;
+    }
+    
    
     public String[] getColumnsFix(String table){
         jsonObject = readFile();

@@ -95,7 +95,6 @@ public class Table implements MetaTable {
     @Override
     public String[] getOrderedColumns() {
         return orderedColumns;
-        
     }
     
     @Override
