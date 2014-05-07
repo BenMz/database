@@ -608,7 +608,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitNada(SQLParser.NadaContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       return "0" ;//To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -629,7 +629,13 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitMulOrder(SQLParser.MulOrderContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       String order = (String) visit(ctx.orderType());
+       String id = ctx.ID(0).getText();
+       LinkedList lista = new LinkedList();
+       lista.add(id);
+       lista.add(order);
+//       System.out.println(lista);
+       return lista;  //To change body of generated methods, choose Tools | Templates.
     }
     
    
@@ -1123,7 +1129,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitAsc(SQLParser.AscContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       return "1";  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -1301,7 +1307,7 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitDesc(SQLParser.DescContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+       return "2";  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
