@@ -6,7 +6,9 @@
 
 package dbman;
 
+import java.util.List;
 import java.util.Map;
+import org.json.simple.JSONObject;
 
 /**
  *
@@ -15,4 +17,5 @@ import java.util.Map;
 public interface DBObject {
     public Map<String,MetaTable> getTables();
     
+    public List<JSONObject> getCH(String table, String column);
 }
