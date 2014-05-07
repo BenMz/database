@@ -1,2 +1,2 @@
 USE DATABASE proyecto;
-UPDATE empleado SET comision = 11.0
+ALTER TABLE empleado_sucursal ADD CONSTRAINT fk_empleado FOREIGN KEY (empleado_id) REFERENCES empleado (id)
