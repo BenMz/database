@@ -244,6 +244,12 @@ public class DMLManager {
         LinkedList<String> hashes = new LinkedList<>();
         try {
             MetaTable currTable = getCurrentTable();
+            /*
+            Aqui miramos si ya habiamos leido el archivo anteriormente. 
+            La idea es reducir las veces en que tenemos que leer el archivo solo para encontrar llaves
+            Tenerlas guardadas y actualizarla cuando se de un cambio es mas eficiente en cuestiones de tiempo
+            de hasta 50~60 segundos.
+            */
             if(hash_tables.containsKey(currTable.getName())){
                 hashes = hash_tables.get(currTable.getName());
                 String newkey = "";
@@ -306,9 +312,9 @@ public class DMLManager {
      * @throws ConstrainException 
      */
     public int insert(List<String> values, List<String> columns) throws ConstrainException{
-        if(this.verbose){
-            System.out.println(String.format("INSERT: values %s, columns %s", values, columns));
-        }
+//        if(this.verbose){
+//            System.out.println(String.format("INSERT: values %s, columns %s", values, columns));
+//        }
         //TODO: check contrains
         int insertedRows = 0;
         if(this.currTables.size() != 1){
@@ -458,9 +464,9 @@ public class DMLManager {
     }
     
     public int update(List<String> values, List<String> columns, String validation) throws ConstrainException{
-        if(verbose){
-            System.out.println(String.format("UPDATE: values %s  columns %s  validation %s", values, columns, validation));
-        }
+//        if(verbose){
+//            System.out.println(String.format("UPDATE: values %s  columns %s  validation %s", values, columns, validation));
+//        }
         if(columns.size() != values.size()){
             throw new ConstrainException(String.format("Values passed (%s) do not corresond to the specified columns (%s).", columns.size(), values.size()));
         }
