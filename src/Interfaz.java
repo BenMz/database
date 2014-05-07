@@ -138,6 +138,7 @@ public static String createTree(String word){
         output+="line "+line+":"+charPositionInLine+" "+msg+"\n";
         underlineError(recognizer,(Token)offendingSymbol,
                        line, charPositionInLine);
+        
     }
 
     protected void underlineError(Recognizer recognizer,
@@ -179,7 +180,11 @@ public static String createTree(String word){
         String[] result = test.split("\\ ");
 //        System.out.println(tree.toStringTree(parser)); // print tree as text
 //          ParseTree tree = parser.program(); // parse; start at prog
-        Visitante eval = new Visitante(verbose.isSelected());
+        System.out.println(Message);
+        if(Message!=null)
+            
+            return Message;
+        Visitante eval = new Visitante();
         eval.visit(tree);   
         int iterador = 0;
         String message = "";
@@ -226,6 +231,8 @@ public static String createTree(String word){
         jTabbedPane1 = new javax.swing.JTabbedPane();
         jScrollPane1 = new javax.swing.JScrollPane();
         queryText = new javax.swing.JTextArea();
+        jScrollPane3 = new javax.swing.JScrollPane();
+        jTable1 = new javax.swing.JTable();
         jScrollPane2 = new javax.swing.JScrollPane();
         resultText = new javax.swing.JTextArea();
         jButton1 = new javax.swing.JButton();
@@ -238,6 +245,22 @@ public static String createTree(String word){
         jScrollPane1.setViewportView(queryText);
 
         jTabbedPane1.addTab("Query Editor", jScrollPane1);
+
+        jTable1.setModel(new javax.swing.table.DefaultTableModel(
+            new Object [][] {
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null}
+            },
+            new String [] {
+                "Title 1", "Title 2", "Title 3", "Title 4"
+            }
+        ));
+        jTable1.setEnabled(false);
+        jScrollPane3.setViewportView(jTable1);
+
+        jTabbedPane1.addTab("Table", jScrollPane3);
 
         resultText.setEditable(false);
         resultText.setColumns(20);
@@ -311,12 +334,12 @@ public static String createTree(String word){
         } catch (FileNotFoundException ex) {
             Logger.getLogger(Interfaz.class.getName()).log(Level.SEVERE, null, ex);
         }
+        
        Message= parser();
         System.out.println(Message);
        String texto =Message;
        resultText.setText(texto);
-       codigoInt = "";
-       Message=null;
+       Message="";
         
     }//GEN-LAST:event_jButton1ActionPerformed
 
@@ -364,7 +387,9 @@ public static String createTree(String word){
     private javax.swing.JPanel jPanel1;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JScrollPane jScrollPane2;
+    private javax.swing.JScrollPane jScrollPane3;
     private javax.swing.JTabbedPane jTabbedPane1;
+    private javax.swing.JTable jTable1;
     private javax.swing.JTextArea queryText;
     private javax.swing.JTextArea resultText;
     private javax.swing.JCheckBox verbose;

@@ -2,11 +2,15 @@
 import dbman.ConstrainException;
 import dbman.DB;
 import dbman.DMLManager;
+import dbman.MetaTable;
 import dbman.Table;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.FilenameFilter;
 import java.io.IOException;
-import java.util.EmptyStackException;
+import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -19,6 +23,8 @@ import java.util.regex.Pattern;
 import javax.swing.JOptionPane;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 import org.supercsv.io.CsvMapWriter;
 import org.supercsv.io.ICsvMapWriter;
 import org.supercsv.prefs.CsvPreference;
@@ -45,15 +51,15 @@ public class Visitante extends SQLBaseVisitor<Object>{
     private int insertedRows = 0;
     private int deletedRows = 0;
     private int updatedRows = 0;
-    private boolean verbose;
+    private boolean modoEval = false;
+    private LinkedList validatingCol = null;
     
-    public Visitante(boolean verbose ){
-        this.verbose=verbose;
-    }
+
+    
     
     @Override
     public Object visitExpression(SQLParser.ExpressionContext ctx) {
-    
+    //EXPRESION OR
       String exp = (String) visit(ctx.andExp());
         if(ctx.getChild(1)!=null){
            exp+="||"+visit(ctx.expression());
@@ -147,7 +153,38 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitGreaterEqual(SQLParser.GreaterEqualContext ctx) {
-        String exp = visit(ctx.addExp(0))+">="+visit(ctx.addExp(1));
+       String exp;
+        if(modoEval){
+           String val1 = (String) visit(ctx.addExp(0));
+           String val2 = (String) visit(ctx.addExp(1));
+           if(val1==null || val2==null)
+               return null;
+           if(val1.charAt(0)=='_'){
+               if(alterTable==null)
+                  val1 =  (String) columns.get(val1.substring(1)).get(1);
+               else
+                   val1 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+           }
+            if(val2.charAt(0)=='_'){
+               if(alterTable==null)
+                  val2 =  (String) columns.get(val2.substring(1)).get(1);
+               else
+                   val2 = (String) workingDB.getTables().get(alterTable).getColumns().get(val2.substring(1)).get("type");
+           }
+           
+           if((val1.equals("INT")||val1.equals("FLOAT"))&&(val2.equals("INT")||val2.equals("FLOAT")))
+               return "BOOL";
+           else if(val2.equals("DATE")&&val1.equals("DATE"))
+                   return "BOOL";
+           else{
+               mensajes = "Can't compare "+val1+" with "+val2;
+               all.add(mensajes);
+               return null;
+           }
+               
+           
+       }else
+            exp = visit(ctx.addExp(0))+">="+visit(ctx.addExp(1));
         return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -161,18 +198,108 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitMult(SQLParser.MultContext ctx) {
+    if(modoEval){
+             String val1 = (String) visit(ctx.multExp());
+             String val2 = (String) visit(ctx.negateExp());
+            
+             if(val1==null || val2==null)
+                 return null;
+             if(val1.charAt(0)=='_'){
+                 if(alterTable==null)
+                    val1 =  (String) columns.get(val1.substring(1)).get(1);
+                 else
+                     val1 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+             }
+             if(val2.charAt(0)=='_'){
+                 if(alterTable==null)
+                    val2 =  (String) columns.get(val2.substring(1)).get(1);
+                 else
+                     val2 = (String) workingDB.getTables().get(alterTable).getColumns().get(val2.substring(1)).get("type");
+             }
+
+             if((val1.equals("INT")||val1.equals("FLOAT"))&&(val2.equals("INT")||val2.equals("FLOAT")))
+                 return "INT";
+             else{
+                 mensajes = "Can't operate "+val1+" with "+val2;
+                 all.add(mensajes);
+                 return null;
+             }       
+
+      }else
        return visit(ctx.negateExp())+"*"+visit(ctx.multExp());
     }
 
     @Override
     public Object visitLower(SQLParser.LowerContext ctx) {
-        String exp = visit(ctx.addExp(0))+">="+visit(ctx.addExp(1));
+ String exp;
+        if(modoEval){
+           String val1 = (String) visit(ctx.addExp(0));
+           String val2 = (String) visit(ctx.addExp(1));
+           if(val1==null || val2==null)
+               return null;
+           if(val1.charAt(0)=='_'){
+               if(alterTable==null)
+                  val1 =  (String) columns.get(val1.substring(1)).get(1);
+               else
+                   val1 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+           }
+           if(val2.charAt(0)=='_'){
+               if(alterTable==null)
+                  val2 =  (String) columns.get(val2.substring(1)).get(1);
+               else
+                   val2 = (String) workingDB.getTables().get(alterTable).getColumns().get(val2.substring(1)).get("type");
+           }
+           
+           if((val1.equals("INT")||val1.equals("FLOAT"))&&(val2.equals("INT")||val2.equals("FLOAT")))
+               return "BOOL";
+           else if(val2.equals("DATE")&&val1.equals("DATE"))
+                   return "BOOL";
+           else{
+               mensajes = "Can't compare "+val1+" with "+val2;
+               all.add(mensajes);
+               return null;
+           }
+               
+           
+       }else
+            exp = visit(ctx.addExp(0))+"<"+visit(ctx.addExp(1));
         return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
     public Object visitGreater(SQLParser.GreaterContext ctx) {
-               String exp = visit(ctx.addExp(0))+">"+visit(ctx.addExp(1));
+ String exp;
+        if(modoEval){
+           String val1 = (String) visit(ctx.addExp(0));
+           String val2 = (String) visit(ctx.addExp(1));
+           if(val1==null || val2==null)
+               return null;
+           if(val1.charAt(0)=='_'){
+               if(alterTable==null)
+                  val1 =  (String) columns.get(val1.substring(1)).get(1);
+               else
+                   val1 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+           }
+           if(val2.charAt(0)=='_'){
+               if(alterTable==null)
+                  val2 =  (String) columns.get(val2.substring(1)).get(1);
+               else
+                   val2 = (String) workingDB.getTables().get(alterTable).getColumns().get(val2.substring(1)).get("type");
+           }
+           
+           if((val1.equals("INT")||val1.equals("FLOAT"))&&(val2.equals("INT")||val2.equals("FLOAT")))
+               return "BOOL";
+           else if(val2.equals("DATE")&&val1.equals("DATE"))
+                   return "BOOL";
+           else{
+               mensajes = "Can't compare "+val1+" with "+val2;
+               all.add(mensajes);
+               return null;
+           }
+               
+           
+       }else
+            exp = visit(ctx.addExp(0))+">"+visit(ctx.addExp(1));
        return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -182,20 +309,20 @@ public class Visitante extends SQLBaseVisitor<Object>{
         File viejo = new File("src/db/"+ctx.ID(0)); 
 
        if(nuevo.exists()){
-           mensajes+="No puede renombrarlo. Ya existe una BD con el nombre de "+ctx.ID(1);
+           mensajes="No puede renombrarlo. Ya existe una BD con el nombre de "+ctx.ID(1);
            all.add(mensajes);
            return -1;
        }
        if(!viejo.exists()){
-           mensajes+="No existe la BD con el nombre de "+ctx.ID(0);
+           mensajes="No existe la BD con el nombre de "+ctx.ID(0);
            all.add(mensajes);
            return -1;
            
        }
       
-       //ver si no se encuentra en uso la base de datos
+       //ver si  se encuentra en uso la base de datos
        if(workingDB!=null && workingDB.getName().equals(ctx.ID(0))){
-           workingDB.setName(ctx.ID(0).getText());
+           workingDB.setName(ctx.ID(1).getText());
        }
        viejo.renameTo(nuevo);
         nuevo = new File("src/db/"+ctx.ID(1)+".json"); 
@@ -208,30 +335,63 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitSuma(SQLParser.SumaContext ctx) {
-       
+    if(modoEval){
+             String val1 = (String) visit(ctx.multExp());
+             String val2 = (String) visit(ctx.addExp());
+            
+             if(val1==null || val2==null)
+                 return null;
+             if(val1.charAt(0)=='_'){
+                 if(alterTable==null)
+                    val1 =  (String) columns.get(val1.substring(1)).get(1);
+                 else
+                     val1 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+             }
+             if(val2.charAt(0)=='_'){
+                 if(alterTable==null)
+                    val2 =  (String) columns.get(val2.substring(1)).get(1);
+                 else
+                     val2 = (String) workingDB.getTables().get(alterTable).getColumns().get(val2.substring(1)).get("type");
+             }
+
+             if((val1.equals("INT")||val1.equals("FLOAT"))&&(val2.equals("INT")||val2.equals("FLOAT")))
+                 return "INT";
+             else{
+                 mensajes = "Can't operate "+val1+" with "+val2;
+                 all.add(mensajes);
+                 return null;
+             }       
+
+      }else
        return visit(ctx.multExp())+"+"+visit(ctx.addExp());  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
     public Object visitNotExp(SQLParser.NotExpContext ctx) {
-       String exp; 
-       
+     
+        String exp; 
+       if(modoEval){
+           exp = (String) visit(ctx.predExp());
+           if(exp==null)
+               return null;
+           if(!exp.equals("BOOL")){
+               mensajes = "Can't negate "+ctx.predExp().getText();
+               all.add(mensajes);
+               return null;
+           }
+       }else{
         if(ctx.not!=null)           
            exp = "!("+visit(ctx.getChild(1))+")";
         else
             exp = ""+ visit(ctx.getChild(0));
-        
+       }
        return exp;  //To change body of generated methods, choose Tools | Templates.
     }
     
 
     @Override
     public Object visitDeleteStm(SQLParser.DeleteStmContext ctx) {
-       if(workingDB==null){
-           mensajes = "Not using any database";
-           all.add(mensajes);
-           return -1;
-       }
+
        DMLManager dbm = new DMLManager(workingDB);
        dbm.workWithTables(ctx.ID().getText());
        String where = (String) visit(ctx.whereClause());
@@ -280,14 +440,40 @@ public class Visitante extends SQLBaseVisitor<Object>{
                     //revisamos que cada columna exista
                     
                     for(Object col: columnas){
-                        if(!workingDB.getTables().get(alterTable).getColumns().containsKey(col) || !columns.containsKey(col)){
+                        if(!workingDB.getTables().get(alterTable).getColumns().containsKey(col) && !columns.containsKey(col)){
                             mensajes = "The column "+col+" doesn't exist";
                             all.add(mensajes);
                             return -1;
                         }
                     }
-
-                    
+                    if(constraint.get("type").equals("foreign")){
+                        JSONArray refCols = (JSONArray) constraint.get("referencedColumns");
+                        if(refCols.size()!=columnas.size()){
+                            mensajes = "Different number of columns between "+refCols+" and "+columnas;
+                            all.add(mensajes);
+                            return -1;               
+                        }
+                        //VALIDAR TIPOS
+                        for(int i=0;i<columnas.size();i++){
+                            //           //determinar si son del mismo tipo
+                            JSONObject refCol = workingDB.getTables().get(constraint.get("referencedTable")).getColumns().get(refCols.get(i));
+                 //           
+                            String tipo ; //tipo de la variable local
+                            if(workingDB.getTables().get(alterTable)==null){
+                                 tipo = columns.get(columnas.get(i)).get(1).toString(); //en la posicion 1 esta el tipo de la columna
+                             }else{
+                                 tipo = (String) workingDB.getTables().get(alterTable).getColumns().get(columnas.get(i)).get("type");
+                             }
+                 //           
+                            if(!(tipo).equals(refCol.get("type"))){
+                                mensajes = "Column "+columnas.get(i)+" has different type than "+refCol.get("name");
+                                all.add(mensajes);
+                                return -1;              
+                            }
+                        }
+                    }else if(constraint.get("type").equals("check"))
+                        constraint.remove("node");
+                   
                     workingDB.addConstraint(alterTable, constraint);
                     mensajes = "Constraint "+result.get(1)+" added";
                     all.add(mensajes);
@@ -440,22 +626,46 @@ public class Visitante extends SQLBaseVisitor<Object>{
     public Object visitMulOrder(SQLParser.MulOrderContext ctx) {
        visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
     }
-
+    
+   
+    
     @Override
     public Object visitValue(SQLParser.ValueContext ctx) {
-        
-        if(ctx.getChild(0).equals("(")) //si es otra expresion
-            return visit(ctx.expression());
-        if(ctx.ID(0)!=null){ //si es un ID
-            if(ctx.ID(1)!=null) //si es un ID.ID
-                return "{"+ctx.ID(0).getText()+"."+ctx.ID(1).getText()+"} ";
-            else
-                return "{"+ctx.ID(0)+"} ";
+        if(modoEval){
+            if(ctx.getChild(0).equals("(")) //si es otra expresion
+                return visit(ctx.expression());
+            if(ctx.ID(0)!=null){ //si es un ID
+                if(ctx.ID(1)!=null) //si es un ID.ID
+                    return null;
+                else
+                    return "_"+ctx.ID(0).getText();
+            }
+            
+            if(ctx.NUM()!=null)
+                return "INT";
+            if(ctx.getText().matches("^'(19|20)\\d\\d[\\-\\/.](0[1-9]|1[012])[\\-\\/.](0[1-9]|[12][0-9]|3[01])'$"))
+               return "DATE";
+            if(ctx.STRING()!=null)
+                return "CHAR";
+            if(ctx.REAL()!=null)
+                return "FLOAT";
+            
+           return null;     
+           
+        }else{
+            if(ctx.getChild(0).equals("(")) //si es otra expresion
+                return visit(ctx.expression());
+            if(ctx.ID(0)!=null){ //si es un ID
+                if(ctx.ID(1)!=null) //si es un ID.ID
+                    return "{"+ctx.ID(0).getText()+"."+ctx.ID(1).getText()+"} ";
+                else
+                    return "{"+ctx.ID(0)+"} ";
+            }
+            if(ctx.getText().matches("^'(19|20)\\d\\d[\\-\\/.](0[1-9]|1[012])[\\-\\/.](0[1-9]|[12][0-9]|3[01])'$"))
+               return ctx.getText().replace("'", "");
+
+           return ctx.getText();  
         }
-        if(ctx.STRING()!=null)
-            return "\""+ctx.getText()+"\"";
-       
-       return ctx.getText();  
     }
 
    @Override
@@ -538,17 +748,77 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitEquals(SQLParser.EqualsContext ctx) {
-        String exp = visit(ctx.addExp(0))+"=="+visit(ctx.addExp(1));
+ String exp;
+        if(modoEval){
+           String val1 = (String) visit(ctx.addExp(0));
+           String val2 = (String) visit(ctx.addExp(1));
+           if(val1==null || val2==null)
+               return null;
+           if(val1.charAt(0)=='_'){
+               if(alterTable==null)
+                  val1 =  (String) columns.get(val1.substring(1)).get(1);
+               else
+                   val1 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+           }
+           if(val2.charAt(0)=='_'){
+               if(alterTable==null)
+                  val2 =  (String) columns.get(val1.substring(1)).get(1);
+               else
+                   val2 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+           }
+           
+           if(val1.equals(val2))
+               return "BOOL";
+           else{
+               mensajes = "Can't compare "+val1+" with "+val2;
+               all.add(mensajes);
+               return null;
+           }
+               
+           
+       }else
+            exp = visit(ctx.addExp(0))+"=="+visit(ctx.addExp(1));
        return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
     public Object visitShowDB(SQLParser.ShowDBContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        File[] files = (new File("src/db")).listFiles();
+        String message = "Las bases de datos existentes:";
+        for(int i=0;i<files.length;i++){
+            File f = files[i];
+            if(f.isDirectory()){
+                JSONObject json = null;
+                try {
+                    JSONParser parser = new JSONParser();
+                    Object obj = parser.parse(new FileReader("src/db/"+f.getName()+".json"));  
+                    json = (JSONObject) obj;
+                   
+                } catch (IOException ex) {
+                    Logger.getLogger(DB.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (ParseException ex) {
+                    Logger.getLogger(DB.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                 JSONArray tablas = (JSONArray) json.get("tablas");
+                message+="\nNombre: "+f.getName()+", No. de registros: "+json.get("records")+", No. de tablas "+tablas.size();
+                
+            }
+        }
+        message+="\n/********************************/\n";
+       mensajes = message;
+       all.add(mensajes);
+         return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
-    public Object visitUseDB(SQLParser.UseDBContext ctx) {      
+    public Object visitUseDB(SQLParser.UseDBContext ctx) {
+        File f = new File("src/db/"+ctx.ID()); 
+
+       if(!f.exists()){
+           mensajes="No existe la BD "+ctx.ID();
+           all.add(mensajes);
+           return -1;
+       }
         workingDB = new DB(ctx.ID().getText());
         mensajes = "Usando la base de datos "+workingDB.getName();
         all.add(mensajes);
@@ -557,7 +827,36 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitNotEquals(SQLParser.NotEqualsContext ctx) {
-        String exp = visit(ctx.addExp(0))+"!="+visit(ctx.addExp(1));
+        String exp;
+        if(modoEval){
+           String val1 = (String) visit(ctx.addExp(0));
+           String val2 = (String) visit(ctx.addExp(1));
+           if(val1==null || val2==null)
+               return null;
+           if(val1.charAt(0)=='_'){
+               if(alterTable!=null)
+                  val1 =  (String) columns.get(val1.substring(1)).get(1);
+               else
+                   val1 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+           }
+           if(val2.charAt(0)=='_'){
+               if(alterTable!=null)
+                  val2 =  (String) columns.get(val1.substring(1)).get(1);
+               else
+                   val2 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+           }
+           
+           if(val1.equals(val2))
+               return "BOOL";
+           else{
+               mensajes = "Can't compare "+val1+" with "+val2;
+               all.add(mensajes);
+               return null;
+           }
+               
+           
+       }else
+            exp = visit(ctx.addExp(0))+"!="+visit(ctx.addExp(1));
        return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -700,13 +999,35 @@ public class Visitante extends SQLBaseVisitor<Object>{
                         return -1;              
                     }
                 }
+            }else if(constraint.get("type").equals("check")){ //validar tipos en el check
+                 
+                SQLParser.ExpressionContext node = (SQLParser.ExpressionContext) constraint.get("node");
+                
+                modoEval = true;
+                validatingCol = new LinkedList();
+                String backup = alterTable;
+                alterTable = ctx.ID().getText();
+                for(Object col: conCol){
+                    validatingCol.add(col);
+                }
+                String exp =  (String) visit(node);
+                System.out.println("entering check ");
+                if(exp==null){
+                    return -1; //HAY UN ERROR DE TIPOS
+                }
+                constraint.remove("node");
+                alterTable = backup;
+                modoEval =false;
+                
             }
+            
             
             
             arrayConstraints.add(constraint);
         }
         
-        System.exit(0);
+//        System.out.println(arrayConstraints);
+//        System.exit(0);
         workingDB.createTable(newTable,arrayConstraints);
 	try {
  
@@ -723,7 +1044,38 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitLowerEqual(SQLParser.LowerEqualContext ctx) {
-        String exp = visit(ctx.addExp(0))+">="+visit(ctx.addExp(1));
+ String exp;
+        if(modoEval){
+           String val1 = (String) visit(ctx.addExp(0));
+           String val2 = (String) visit(ctx.addExp(1));
+           if(val1==null || val2==null)
+               return null;
+           if(val1.charAt(0)=='_'){
+               if(alterTable==null)
+                  val1 =  (String) columns.get(val1.substring(1)).get(1);
+               else
+                   val1 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+           }
+           if(val2.charAt(0)=='_'){
+               if(alterTable==null)
+                  val2 =  (String) columns.get(val2.substring(1)).get(1);
+               else
+                   val2 = (String) workingDB.getTables().get(alterTable).getColumns().get(val2.substring(1)).get("type");
+           }
+           
+           if((val1.equals("INT")||val1.equals("FLOAT"))&&(val2.equals("INT")||val2.equals("FLOAT")))
+               return "BOOL";
+           else if(val2.equals("DATE")&&val1.equals("DATE"))
+                   return "BOOL";
+           else{
+               mensajes = "Can't compare "+val1+" with "+val2;
+               all.add(mensajes);
+               return null;
+           }
+               
+           
+       }else
+            exp = visit(ctx.addExp(0))+"<="+visit(ctx.addExp(1));
         return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -750,12 +1102,12 @@ public class Visitante extends SQLBaseVisitor<Object>{
        
 
         JSONObject constraint = constraints.get("addCon"); //como sabemos que solo hay uno 
+        
         constraint.put("table",table);
         LinkedList result = new LinkedList();
         result.add("addCon");
         result.add(constraint);
-        alterOperations.add(result);              
-           
+        alterOperations.add(result); 
         
 
         
@@ -789,20 +1141,52 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitNotNull(SQLParser.NotNullContext ctx) {
-       
-       String exp = visit(ctx.value())+"!=null";
+       String exp;
+        if(modoEval){
+           exp = (String) visit(ctx.value());
+           if(exp==null)
+               return null;
+           return "BOOL";
+       }else
+            exp = visit(ctx.value())+"!=null";
        return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
     public Object visitMulQ(SQLParser.MulQContext ctx) {
-        visitChildren(ctx);
+        for(int i = 0;i<ctx.query().size();i++){
+            if(visit(ctx.query(i))!=null)
+                return -1;
+        }
         return null;
     }
 
     @Override
     public Object visitShowTbl(SQLParser.ShowTblContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        String message = "Las tablas de la base de datos: ";
+        Map<String, MetaTable> tables = workingDB.getTables();
+        for(Map.Entry<String, MetaTable> pair: tables.entrySet()){
+            Table tabla = (Table) pair.getValue();
+            message+="\nNombre: "+pair.getKey()+", No. de registros "+tabla.getRecords();
+            message+=", Constraints:{";
+            LinkedList<JSONObject> constraints = workingDB.getConstraints(tabla.getName());
+            for(JSONObject constraint : constraints){
+                message+=constraint.get("name");
+                if(constraint.get("type").equals("primary")){
+                    message+=" PRIMARY KEY "+constraint.get("columns");
+                }else if(constraint.get("type").equals("foreign")){
+                    message+=" FOREIGN KEY "+constraint.get("columns")+" REFERENCES "+constraint.get("referencedTable")+" "+constraint.get("referencedColumns");
+                }else
+                    message+=" CHECK ("+constraint.get("expression").toString().replace("{", "").replace("}", "")+")";
+               message+=" ; ";
+            }
+            message+="}";
+        }
+       
+        message+="\n/********************************/\n";
+       mensajes = message;
+       all.add(mensajes);
+       return null;
     }
 
     @Override
@@ -891,15 +1275,22 @@ public class Visitante extends SQLBaseVisitor<Object>{
        f.delete();
        f = new File("src/db/"+ctx.ID()+".json"); 
        f.delete();
-       mensajes+="Se ha borrado la BD "+ctx.ID();
+       mensajes ="Se ha borrado la BD "+ctx.ID();
        all.add(mensajes);
        return null;
     }
 
     @Override
     public Object visitIsNull(SQLParser.IsNullContext ctx) {
-       String exp = visit(ctx.value())+"==null";
-       return exp;  //To change body of generated methods, choose Tools | Templates.
+       String exp;
+        if(modoEval){
+           exp = (String) visit(ctx.value());
+           if(exp==null)
+               return null;
+           return "BOOL";
+       }else
+            exp = visit(ctx.value())+"==null";
+        return exp;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -981,6 +1372,34 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitDiv(SQLParser.DivContext ctx) {
+    if(modoEval){
+             String val1 = (String) visit(ctx.multExp());
+             String val2 = (String) visit(ctx.negateExp());
+            
+             if(val1==null || val2==null)
+                 return null;
+             if(val1.charAt(0)=='_'){
+                 if(alterTable==null)
+                    val1 =  (String) columns.get(val1.substring(1)).get(1);
+                 else
+                     val1 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+             }
+             if(val2.charAt(0)=='_'){
+                 if(alterTable==null)
+                    val2 =  (String) columns.get(val2.substring(1)).get(1);
+                 else
+                     val2 = (String) workingDB.getTables().get(alterTable).getColumns().get(val2.substring(1)).get("type");
+             }
+
+             if((val1.equals("INT")||val1.equals("FLOAT"))&&(val2.equals("INT")||val2.equals("FLOAT")))
+                 return "INT";
+             else{
+                 mensajes = "Can't operate "+val1+" with "+val2;
+                 all.add(mensajes);
+                 return null;
+             }       
+
+      }else
         return visit(ctx.negateExp())+"/"+visit(ctx.multExp());
     }
 
@@ -1005,11 +1424,14 @@ public class Visitante extends SQLBaseVisitor<Object>{
        
        if(constraint.get("type").equals("primary"))
            constraints.put("_pk", constraint); //esto indicara que ya no se puede crear otra primary key
-       LinkedList lista = new LinkedList();
-       lista.add("addCon");
-       lista.add(constraint);
-       alterOperations.add(lista);
-       constraints.put((String) constraint.get("name"), constraint);
+//       LinkedList lista = new LinkedList();
+//       lista.add("addCon");
+//       lista.add(constraint);
+//       alterOperations.add(lista);
+       if(alterTable == null)
+           constraints.put((String) constraint.get("name"), constraint);
+       else
+           constraints.put("addCon", constraint);
        return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -1094,6 +1516,11 @@ public class Visitante extends SQLBaseVisitor<Object>{
            return -1;
        }
        workingDB.renameTable(oldID,newID);
+       File old = new File("src/db/"+workingDB.getName()+"/"+oldID+".csv");
+       File renamed = new File("src/db/"+workingDB.getName()+"/"+newID+".csv");
+       old.renameTo(renamed);
+       mensajes = "Table renamed";
+       all.add(mensajes);
         return null;  
     }
 
@@ -1125,6 +1552,11 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitTblStm(SQLParser.TblStmContext ctx) {
+        if(workingDB==null){
+            mensajes = "No se esta usando una BD";
+            all.add(mensajes);
+            return -1;
+        }
        visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
     }
 
@@ -1135,7 +1567,23 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitShowCol(SQLParser.ShowColContext ctx) {
-       visitChildren(ctx);  return null;  //To change body of generated methods, choose Tools | Templates.
+        if(!workingDB.getTables().containsKey(ctx.ID().getText())){
+            mensajes = "Table "+ctx.ID().getText()+" doesn't exist";
+            all.add(mensajes);
+            return -1;
+        }
+        
+        String message = "Las columnas de la tabla "+ctx.ID().getText()+" : ";
+        Map<String, JSONObject> columns = workingDB.getTables().get(ctx.ID().getText()).getColumns();
+        for(Map.Entry<String, JSONObject> pair: columns.entrySet()){
+            JSONObject column = (JSONObject) pair.getValue();
+            message+="\nNombre: "+pair.getKey()+",Tipo: "+column.get("type")+(column.get("type").equals("CHAR")?", Length: "+column.get("size"):"")+", Not Null?: "+column.get("notNull");
+        }
+       
+        message+="\n/********************************/\n";
+       mensajes = message;
+       all.add(mensajes);
+       return null;
     }
 
     @Override
@@ -1197,7 +1645,27 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitNegate(SQLParser.NegateContext ctx) {
-        
+    if(modoEval){
+             String val1 = (String) visit(ctx.value());
+            
+             if(val1==null)
+                 return null;
+             if(val1.charAt(0)=='_'){
+                 if(alterTable==null)
+                    val1 =  (String) columns.get(val1.substring(1)).get(1);
+                 else
+                     val1 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+             }
+
+             if((val1.equals("INT")||val1.equals("FLOAT")))
+                 return val1;
+             else{
+                 mensajes = "Can't negate "+val1;
+                 all.add(mensajes);
+                 return null;
+             }       
+
+      }else
         return visit(ctx.value());
     }
 
@@ -1219,17 +1687,19 @@ public class Visitante extends SQLBaseVisitor<Object>{
   //encontrar las columnas que hace referencia
         Pattern column_pattern = Pattern.compile( "\\{[^\\. ;]+\\}"); //Hace match de cosas como {tabla.columna} o {columna}
         Matcher matcher = column_pattern.matcher(exp);
-        LinkedList columnas = null;
+        LinkedList columnas = new LinkedList();
+        
         while(matcher.find()){
             String col = matcher.group();
             String[] col_parts = col.substring(1, col.length()-1).split("\\.");
             //Normalizar col para el regex a reemplazar en la expresión luego
+            
             col = col.replace("{", "").replace("}", "");
+            
             if(!columnas.contains(col))
                 columnas.add(col);
         }
         
-        System.exit(0);
        
        Iterator it = columnas.iterator();
        JSONArray arrayConstraints = new JSONArray();
@@ -1243,7 +1713,8 @@ public class Visitante extends SQLBaseVisitor<Object>{
 //                    return -1;
 //                }
             }else{
-                //determinar si existe la columna en la tabla ya creada
+                
+                //determinar si existe la columna en la BD ya creada
                 if(!workingDB.getTables().get(alterTable).getColumns().containsKey(col)){
                     mensajes = "Column "+col+" doesn't exist";
                     all.add(mensajes);
@@ -1252,10 +1723,13 @@ public class Visitante extends SQLBaseVisitor<Object>{
             }
            arrayConstraints.add(col);
        }
+       
+       obj.put("expression", exp);
        obj.put("columns",arrayConstraints);
        obj.put("name", id);
-       obj.put("type", "foreign");        
-       return null;  //To change body of generated methods, choose Tools | Templates.
+       obj.put("type", "check");  
+       obj.put("node", ctx.expression());
+       return obj;  //To change body of generated methods, choose Tools | Templates.
     }
 
     @Override
@@ -1345,6 +1819,34 @@ public class Visitante extends SQLBaseVisitor<Object>{
 
     @Override
     public Object visitResta(SQLParser.RestaContext ctx) {
+    if(modoEval){
+             String val1 = (String) visit(ctx.multExp());
+             String val2 = (String) visit(ctx.addExp());
+            
+             if(val1==null || val2==null)
+                 return null;
+             if(val1.charAt(0)=='_'){
+                 if(alterTable==null)
+                    val1 =  (String) columns.get(val1.substring(1)).get(1);
+                 else
+                     val1 = (String) workingDB.getTables().get(alterTable).getColumns().get(val1.substring(1)).get("type");
+             }
+             if(val2.charAt(0)=='_'){
+                 if(alterTable==null)
+                    val2 =  (String) columns.get(val2.substring(1)).get(1);
+                 else
+                     val2 = (String) workingDB.getTables().get(alterTable).getColumns().get(val2.substring(1)).get("type");
+             }
+
+             if((val1.equals("INT")||val1.equals("FLOAT"))&&(val2.equals("INT")||val2.equals("FLOAT")))
+                 return "INT";
+             else{
+                 mensajes = "Can't operate "+val1+" with "+val2;
+                 all.add(mensajes);
+                 return null;
+             }       
+
+      }else
        return visit(ctx.multExp())+"-"+visit(ctx.addExp());
     }
 

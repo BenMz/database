@@ -5,7 +5,7 @@
  */
 
 package dbman;
-
+import java.util.Date;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -177,7 +177,7 @@ public class DMLManager {
         return currTable;
     }
     
-    private String getValType(String val){
+    public String getValType(String val){
         System.out.println("getValType: "+val);
         if(val == null || val.equals("NULL") || val.equals("")){
             return "NULL";

@@ -1,4 +1,2 @@
-USE DATABASE foo;
-CREATE TABLE t3 (
-CONSTRAINT chk CHECK (a>10.0 AND a<20.0),
-a FLOAT)
+USE DATABASE proyecto;
+INSERT INTO empleado VALUES (1,'Juan',5.0)

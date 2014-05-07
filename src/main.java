@@ -1,11 +1,17 @@
 
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FilenameFilter;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
 import org.antlr.v4.misc.OrderedHashMap;
 import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.CommonTokenStream;
@@ -39,7 +45,9 @@ public static String createTree(String word){
 }
      public static void main(String[] args) throws Exception {
   String inputFile = "src/t.expr";
-       
+                   ScriptEngineManager mgr = new ScriptEngineManager();
+            ScriptEngine engine = mgr.getEngineByName("JavaScript");
+            System.out.println(engine.eval("'2000-12-12' !=null"));
         InputStream is = System.in;
         is = new FileInputStream(inputFile);
 
@@ -56,7 +64,10 @@ public static String createTree(String word){
         String[] result = test.split("\\ ");
 //        System.out.println(tree.toStringTree(parser)); // print tree as text
 //          ParseTree tree = parser.program(); // parse; start at prog
-        Visitante eval = new Visitante(false);
+        
+
+
+        Visitante eval = new Visitante();
         eval.visit(tree);
         System.out.println(eval.getAll());
         

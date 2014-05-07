@@ -173,35 +173,35 @@ public class DB implements DBObject {
         ICsvMapWriter mapWriter = null;
         Table currTable = (Table) getTables().get(table);
         String tempFile = currTable.physicalLocation()+".aux";
-//        try{
-//            mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
-//            mapWriter = new CsvMapWriter(new FileWriter(tempFile), CsvPreference.STANDARD_PREFERENCE);
-//            
-//            // the header columns are used as the keys to the Map
-//            final String[] header = mapReader.getHeader(true);
-//            final String[] newHeader = listColumns.toArray(new String[listColumns.size()]);
-//            final CellProcessor[] processors =  new CellProcessor[currTable.getColumns().size()];
-//            final CellProcessor[] newprocessors =  new CellProcessor[currTable.getColumns().size()+1];
-//            mapWriter.writeHeader(newHeader);
-//            
-//            Map<String, Object> rowMap;
-//            //Mientras haya que leer
-//            while( (rowMap = mapReader.read(header, processors)) != null ) {
-//                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
-//                            mapReader.getRowNumber(), rowMap));
-//                    rowMap.put((String) column.get("name"), getDefault((String) column.get("type")));
-//                    mapWriter.write(rowMap, newHeader, newprocessors);
-//            }
-//            mapWriter.close();
-//            mapReader.close();
-//            //Borrar original y Cambiar archivo auxiliar por normal
-//            File old = new File(currTable.physicalLocation());
-//            old.delete();
-//            File newfile = new File(tempFile);
-//            newfile.renameTo(old);        }
-//        catch(IOException e){
-//            
-//        }
+        try{
+            mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
+            mapWriter = new CsvMapWriter(new FileWriter(tempFile), CsvPreference.STANDARD_PREFERENCE);
+            
+            // the header columns are used as the keys to the Map
+            final String[] header = mapReader.getHeader(true);
+            final String[] newHeader = listColumns.toArray(new String[listColumns.size()]);
+            final CellProcessor[] processors =  new CellProcessor[currTable.getColumns().size()];
+            final CellProcessor[] newprocessors =  new CellProcessor[currTable.getColumns().size()+1];
+            mapWriter.writeHeader(newHeader);
+            
+            Map<String, Object> rowMap;
+            //Mientras haya que leer
+            while( (rowMap = mapReader.read(header, processors)) != null ) {
+                    System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+                            mapReader.getRowNumber(), rowMap));
+                    rowMap.put((String) column.get("name"), getDefault((String) column.get("type")));
+                    mapWriter.write(rowMap, newHeader, newprocessors);
+            }
+            mapWriter.close();
+            mapReader.close();
+            //Borrar original y Cambiar archivo auxiliar por normal
+            File old = new File(currTable.physicalLocation());
+            old.delete();
+            File newfile = new File(tempFile);
+            newfile.renameTo(old);        }
+        catch(Exception e){
+            
+        }
         
         
         writeFile("src/db/"+name+".json", obj.toJSONString());
@@ -480,7 +480,7 @@ public class DB implements DBObject {
 //                    return (String) obj.get("name");
 //            }
             if(type.equals("foreign") && obj.get("referencedTable").equals(table)){
-                return "Columns "+obj.get("columns")+" references columns "+obj.get("referencedColumns")+" of table "+table;
+                return "Columns "+obj.get("columns")+" of table "+obj.get("table")+" references columns "+obj.get("referencedColumns")+" of table "+table;
             }
             // TODO comprobacion para check y foreign
         
@@ -514,5 +514,9 @@ public class DB implements DBObject {
         obj.put("tablas", array);
         writeFile("src/db/"+name+".json", obj.toJSONString());
         
+    }
+    
+    public LinkedList<JSONObject> getConstraints(String table){
+        return this.constraints.get(table);
     }
 }
