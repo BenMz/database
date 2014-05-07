@@ -199,7 +199,13 @@ public class DMLManager {
         }
     }
     
-    private String prepareValInsert(String coltype, String value){
+    /**
+     * Casts a value
+     * @param coltype type to which cast value to
+     * @param value value to cast
+     * @return 
+     */
+    public String castVal(String coltype, String value){
         String valtype = this.getValType(value);
         if(coltype.equals("CHAR"))
             if(valtype.equals("INT")||valtype.equals("FLOAT"))
@@ -300,6 +306,9 @@ public class DMLManager {
      * @throws ConstrainException 
      */
     public int insert(List<String> values, List<String> columns) throws ConstrainException{
+        if(this.verbose){
+            System.out.println(String.format("INSERT: values %s, columns %s", values, columns));
+        }
         //TODO: check contrains
         int insertedRows = 0;
         if(this.currTables.size() != 1){
@@ -329,7 +338,7 @@ public class DMLManager {
                     JSONObject column = this.getColumn(currTable.getName(), columns.get(i));
 //                    System.out.println(column);
                     String coltype = column.get("type").toString();
-                    String valinsert = this.prepareValInsert(coltype, values.get(i));
+                    String valinsert = this.castVal(coltype, values.get(i));
                     if(valinsert == null){
                         throw new ConstrainException(String.format("Incompatible types: column '%s' is type %s and '%s' is %s", columns.get(i), 
                                 this.getColumnType(currTable.getName(), columns.get(i)), values.get(i), this.getValType(values.get(i))));
@@ -360,11 +369,12 @@ public class DMLManager {
                 
                 //Check PK
                 List<String> pk_vals = new LinkedList<>();
+                //File the values for the row on the PK
                 for(String pkey : currTable.getPK()){
                     pk_vals.add(newRow.get(pkey));
                 }
                 if(isUnique(pk_vals, currTable.getPK())){
-                    throw new ConstrainException(String.format("Invalid value '%s' for PRIMARY KEY %s on INSERT", pk_vals, currTable.getPK()));
+                    throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
                 }
                 
                 ICsvMapWriter mapWriter = null;
@@ -448,6 +458,9 @@ public class DMLManager {
     }
     
     public int update(List<String> values, List<String> columns, String validation) throws ConstrainException{
+        if(verbose){
+            System.out.println(String.format("UPDATE: values %s  columns %s  validation %s", values, columns, validation));
+        }
         if(columns.size() != values.size()){
             throw new ConstrainException(String.format("Values passed (%s) do not corresond to the specified columns (%s).", columns.size(), values.size()));
         }
@@ -481,12 +494,19 @@ public class DMLManager {
                         //Cambiamos los valores de la file para actualizar
                         for(int i = 0; i<columns.size(); i++){
                             if(this.existsColumn(currTable.getName(), columns.get(i))==1){
-                                String coltype = this.getColumnType(currTable.getName(), columns.get(i));
-                                String valinsert = this.prepareValInsert(coltype, values.get(i));
+                                JSONObject column = this.getColumn(currTable.getName(), columns.get(i));
+                                String coltype = column.get("type").toString();
+                                String valinsert = this.castVal(coltype, values.get(i));
                                 if(valinsert == null){
                                     throw new ConstrainException(String.format("Incompatible types: column '%s' is type %s and '%s' is %s", columns.get(i), 
                                             this.getColumnType(currTable.getName(), columns.get(i)), values.get(i), this.getValType(values.get(i))));
                                 }else {
+                                    //Check CHAR max length
+                                    if(this.getValType(valinsert).equals("CHAR") && Integer.parseInt(column.get("size").toString()) < valinsert.length()-2){
+                                        throw new ConstrainException(String.format("Invalid CHAR size %s for columns '%s'", valinsert.length()-2, column.get("name").toString()));
+                                    }else {
+                                        rowMap.put(columns.get(i),valinsert);
+                                    }
                                     //Check not null
                                     Map<String, JSONObject> cols = currTable.getColumns();
                                     for(String col : cols.keySet()){
@@ -495,7 +515,14 @@ public class DMLManager {
                                                     col,  currTable.getName()));
                                         }
                                     }
-                                    rowMap.put(columns.get(i),valinsert);
+                                    //Check PK
+                                    List<String> pk_vals = new LinkedList<>();
+                                    for(String pkey : currTable.getPK()){
+                                        pk_vals.add(rowMap.get(pkey).toString());
+                                    }
+                                    if(isUnique(pk_vals, currTable.getPK())){
+                                        throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
+                                    }
                                 }
                             }else {
                                 throw new ConstrainException(String.format("Columns '%s' does not exists on table '%s'", columns.get(i), currTable.getName()));
@@ -650,9 +677,7 @@ public class DMLManager {
         try {
             ScriptEngineManager mgr = new ScriptEngineManager();
             ScriptEngine engine = mgr.getEngineByName("JavaScript");
-            System.out.println(">>>"+expr);
             Object res = engine.eval(expr);
-            System.out.println(res);
             return (boolean) res;
         
         }catch(ScriptException e){
@@ -664,20 +689,21 @@ public class DMLManager {
     
     public static void main(String[] args){
         DMLManager dbm = new DMLManager(new DB("foo"));
-        dbm.workWithTables("t1");
+        dbm.workWithTables("prueba2");
         
         List<String> cols = new LinkedList<>();
-        cols.add("key");
+        //cols.add("b");
+        cols.add("a");
         //cols.add("b");
         
         List<String> vals = new LinkedList<>();
-        vals.add("");
+        //vals.add("\"9\"");
+        vals.add("\"14\"");
         //vals.add("");
         
-        
         try {
-            dbm.insert(vals, cols);
-            //dbm.update(vals, cols, null);
+            //dbm.insert(vals, cols);
+            dbm.update(vals, cols, "{a}==13");
             //dbm.delete("{MMM.t} < 3");
             //dbm.update(cols, vals, "{a} > 2");
             
