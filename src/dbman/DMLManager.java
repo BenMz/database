@@ -12,6 +12,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Iterator;
@@ -748,9 +749,74 @@ public class DMLManager {
                 
             }
         }
+        if(orderBy !=null){
+            if(orderIn == 2){
+                orderListMaps(result, orderBy, true);
+            }
+            if(orderIn == 1 || orderIn == 0){
+                orderListMaps(result, orderBy, false);
+            }
+        }
+        
+        for(Map<String,Object> r : result){
+            System.out.println(String.format("%s", r));
+        }
 
         doneWithTables();
         return result;
+    }
+    
+    private List<Map<String,Object>> orderListMaps(List<Map<String,Object>> original, final String col, final boolean asc){
+        
+        Collections.sort(original, new Comparator() {
+                @Override
+                public int compare(Object o1, Object o2) {
+                        Map<String, Object> o1m = (Map<String, Object>) o1;
+                        Map<String, Object> o2m = (Map<String, Object>) o2;
+                        int result = 0;
+                        if(o1m.get(col).equals("NULL") && !o2m.get(col).equals("NULL")){
+                            result =  -1000;
+                        }
+                        if(o2m.get(col).equals("NULL") && !o1m.get(col).equals("NULL")){
+                            result = 1000;
+                        }
+                        if(o1m.get(col).equals("NULL") && o2m.get(col).equals("NULL")){
+                            result = 0;
+                        }
+                        
+                        String val1 = (String) o1m.get(col);
+                        String val2 = (String) o2m.get(col);
+                        
+                        String expr1 = String.format("%s > %s", val1, val2);
+                        String expr2 = String.format("%s < %s", val1, val2);
+                        
+                        try {
+                            ScriptEngineManager mgr = new ScriptEngineManager();
+                            ScriptEngine engine = mgr.getEngineByName("JavaScript");
+                            Object gtr = engine.eval(expr1);
+                            Object lq = engine.eval(expr2);
+                            
+                            if((boolean) gtr){
+                                result = 1;
+                            }
+                            else if((boolean)lq){
+                                result = -1;
+                            }
+                            else {
+                                result = 0;
+                            }
+
+                        }catch(ScriptException e){
+                            System.out.println(e);
+                        }
+                    if(asc){
+                        result = result*(-1);
+                    }
+                    return result;
+                }
+        });
+
+        return original;
     }
     
     /**
@@ -843,7 +909,7 @@ public class DMLManager {
             //dbm.delete("{MMM.t} < 3");
             //dbm.update(cols, vals, "{a} > 2");
             
-            dbm.select(cols, null, null, 0);
+            dbm.select(cols, null, "id", 1);
         } catch (ConstrainException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
