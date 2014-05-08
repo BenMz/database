@@ -18,4 +18,5 @@ public interface DBObject {
     public Map<String,MetaTable> getTables();
     
     public List<JSONObject> getCH(String table, String column);
+    public List<JSONObject> getFKs(String table);
 }

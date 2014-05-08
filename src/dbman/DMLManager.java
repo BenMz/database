@@ -25,6 +25,7 @@ import java.util.regex.Pattern;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
+import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.supercsv.cellprocessor.ift.CellProcessor;
 import org.supercsv.io.CsvMapReader;
@@ -248,15 +249,17 @@ public class DMLManager {
     }
     
     private void refreshPKHashes(){
-    MetaTable currTable = getCurrentTable();
+        refreshPKHashes(getCurrentTable());
+    }
+    private void refreshPKHashes(MetaTable table){
            LinkedList<Integer> hashes = new LinkedList<>();
 
-           if(!hash_tables.containsKey(currTable.getName())){
-               hash_tables.put(currTable.getName(), hashes);
+           if(!hash_tables.containsKey(table.getName())){
+               hash_tables.put(table.getName(), hashes);
            }
            try {
                ICsvMapReader mapReader;
-               mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
+               mapReader = new CsvMapReader(new FileReader(table.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
 
                // the header columns are used as the keys to the Map
                final String[] header = mapReader.getHeader(true);
@@ -270,7 +273,7 @@ public class DMLManager {
                while( (rowMap = mapReader.read(header, processors)) != null ) {
 
                        String pk = "";
-                       for(String pk_col : currTable.getPK()){
+                       for(String pk_col : table.getPK()){
    // System.out.println(String.format("pk_col: %s rop: %s", pk_col, rowMap.get(pk_col)));
                            pk += rowMap.get(pk_col);
                        }
@@ -284,7 +287,7 @@ public class DMLManager {
            }
     }
     
-    private boolean isUniquePK(List<String> valcheck, List<String> columnCheck){
+    private boolean isUniquePK(List<String> valcheck){
         LinkedList<Integer> hashes;
         MetaTable currTable = getCurrentTable();
         /*
@@ -306,6 +309,22 @@ public class DMLManager {
         }
         
         return !hashes.contains(newkey.hashCode());
+    }
+    
+    private boolean existsInForeginPK(String table, List<String> valcheck){
+        LinkedList<Integer> hashes;
+        MetaTable ref_table = db.getTables().get(table);
+        if(!hash_tables.containsKey(table)){
+            refreshPKHashes(ref_table);
+        }
+        hashes = hash_tables.get(ref_table.getName());
+        
+        String newkey = "";
+        for(String val : valcheck){
+            newkey += val;
+        }
+        
+        return hashes.contains(newkey.hashCode());
     }
     
     /**
@@ -364,8 +383,7 @@ public class DMLManager {
                         throw new ConstrainException(String.format("Insert violates NOT NULL constraint on column '%s' of table '%s'.", 
                                 col,  currTable.getName()));
                     }
-//                System.out.println(newRow);
-                //Check not null
+                    //Check NOT NULL
                     if(newRow.get(col) == null && currTable.getPK().contains(col)){
                         throw new ConstrainException(String.format("Insert violates PRIMARY KEY constraint on column '%s', cannot be NULL", col));
                     }
@@ -390,12 +408,35 @@ public class DMLManager {
                 for(String pkey : currTable.getPK()){
                     pk_vals.add((String) newRow.get(pkey));
                 }
-                if(!isUniquePK(pk_vals, currTable.getPK())){
+                if(!isUniquePK(pk_vals)){
                     throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
                 }
+                //Check FK
+                for(JSONObject fk : db.getFKs(currTable.getName())){
+                    //Revisar si la columna de FK se usa en este insert
+                    int ins_fk = 0;
+                    JSONArray l_cols = (JSONArray) fk.get("columns");
+                    for(Object lcol : l_cols){
+                        if(columns.contains((String) lcol)){
+                            ins_fk++;
+                        }
+                    }
+                    if(ins_fk > 0){
+                        JSONArray f_cols = (JSONArray) fk.get("referencedColumns");
+                        List<String> fkey = new LinkedList<>();
+                        for(Object fcol : l_cols){
+                             System.out.println(String.format("fcols: %s newRow.get(%s): %s", f_cols, fcol, newRow));
+                            fkey.add((String) newRow.get((String) fcol));
+                        }
+                       
+                        if(!existsInForeginPK((String) fk.get("referencedTable"), fkey)){
+                            throw new ConstrainException(String.format("Insert violates FOREIGN KEY '%s'", fk.get("name")));
+                        }
+                    }
+                    
+                }
                 
-                
-                ICsvMapWriter mapWriter = null;
+                ICsvMapWriter mapWriter;
                 try {   
                     //Prepare for writing
                     mapWriter = new CsvMapWriter(new FileWriter(fileURL, true),
@@ -557,7 +598,7 @@ public class DMLManager {
                                         for(String pkey : currTable.getPK()){
                                             pk_vals.add(rowMap.get(pkey).toString());
                                         }
-                                        if(!isUniquePK(pk_vals, currTable.getPK())){
+                                        if(!isUniquePK(pk_vals)){
                                             throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
                                         }
                                     }
@@ -734,23 +775,25 @@ public class DMLManager {
     public static void main(String[] args){
         DB db = new DB("proyecto");
         DMLManager dbm = new DMLManager(db);
-        dbm.workWithTables("empleado");
+        dbm.workWithTables("empleado_sucursal");
         
         
         List<String> cols = new LinkedList<>();
-        cols.add("id");
+        cols.add("empleado_id");
+        cols.add("sucursal_id");
         //cols.add("id");
         
         
         List<String> vals = new LinkedList<>();
-        vals.add("12");
+        vals.add("6");
+        vals.add("1");
         //vals.add("11");
         
         
         try {
             dbm.insert(vals, cols);
-            vals.set(0, "13");
-            dbm.insert(vals, cols);
+          //  vals.set(0, "13");
+           // dbm.insert(vals, cols);
             //dbm.update(vals, cols, "{nombre}==\'Pedro\'");
             //dbm.delete("{MMM.t} < 3");
             //dbm.update(cols, vals, "{a} > 2");
