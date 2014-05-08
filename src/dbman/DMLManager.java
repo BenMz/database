@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Hashtable;
@@ -425,7 +426,6 @@ public class DMLManager {
                         JSONArray f_cols = (JSONArray) fk.get("referencedColumns");
                         List<String> fkey = new LinkedList<>();
                         for(Object fcol : l_cols){
-                             System.out.println(String.format("fcols: %s newRow.get(%s): %s", f_cols, fcol, newRow));
                             fkey.add((String) newRow.get((String) fcol));
                         }
                        
@@ -493,6 +493,30 @@ public class DMLManager {
                         data.put(currTable.getName(), rowMap);
                         //Si no cumple con el while
                         if(!this.evalWhere(validation, data)){
+                        //Check FK
+                         List<String>   columns = Arrays.asList(header);
+                        for(JSONObject fk : db.getFKs(currTable.getName())){
+                            //Revisar si la columna de FK se usa en este insert
+                            int ins_fk = 0;
+                            JSONArray l_cols = (JSONArray) fk.get("columns");
+                            for(Object lcol : l_cols){
+                                if(columns.contains((String) lcol)){
+                                    ins_fk++;
+                                }
+                            }
+                            if(ins_fk > 0){
+                                JSONArray f_cols = (JSONArray) fk.get("referencedColumns");
+                                List<String> fkey = new LinkedList<>();
+                                for(Object fcol : l_cols){
+                                    fkey.add((String) rowMap.get((String) fcol));
+                                }
+
+                                if(existsInForeginPK((String) fk.get("referencedTable"), fkey)){
+                                    throw new ConstrainException(String.format("Delete violates FOREIGN KEY '%s'", fk.get("name")));
+                                }
+                            }
+
+                        }
                             mapWriter.write(rowMap, header, processors);
                         }else
                             rowsDeleted++;
@@ -601,6 +625,29 @@ public class DMLManager {
                                         if(!isUniquePK(pk_vals)){
                                             throw new ConstrainException(String.format("Invalid values '%s' for PRIMARY KEY %s on INSERT. (PK must be unique)", pk_vals, currTable.getPK()));
                                         }
+                                    }
+                                    //Check FK
+                                    for(JSONObject fk : db.getFKs(currTable.getName())){
+                                        //Revisar si la columna de FK se usa en este insert
+                                        int ins_fk = 0;
+                                        JSONArray l_cols = (JSONArray) fk.get("columns");
+                                        for(Object lcol : l_cols){
+                                            if(columns.contains((String) lcol)){
+                                                ins_fk++;
+                                            }
+                                        }
+                                        if(ins_fk > 0){
+                                            JSONArray f_cols = (JSONArray) fk.get("referencedColumns");
+                                            List<String> fkey = new LinkedList<>();
+                                            for(Object fcol : l_cols){
+                                                fkey.add((String) rowMap.get((String) fcol));
+                                            }
+
+                                            if(!existsInForeginPK((String) fk.get("referencedTable"), fkey)){
+                                                throw new ConstrainException(String.format("Update violates FOREIGN KEY '%s'", fk.get("name")));
+                                            }
+                                        }
+
                                     }
                 
                                     
