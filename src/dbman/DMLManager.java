@@ -684,44 +684,43 @@ public class DMLManager {
      */
     public List<Map<String, Object>> select(List<String> columns, String validation, String orderBy, int orderIn) throws ConstrainException{
         LinkedList<LinkedList<Map<String, Object>>> partial_results = new LinkedList<>();
-//        System.out.println(String.format("SELECT: %s", this.currTables.keySet()));
+        System.out.println(String.format("SELECT: %s", this.currTables.keySet()));
         for(MetaTable selTable : this.currTables.values()){
 //            System.out.println("Select");
-//            System.out.println(selTable.getName());
+            System.out.println("\n\n>>>TABLE "+selTable.getName());
             //Juntamos header para lectura parcial
             List<String> partial_header  = new LinkedList<>();
             for(String col : columns){
                 if(this.existsColumn(selTable.getName(), col) == 1){
 //                    System.out.println(col);
-//                    partial_header.add(col);
+                    partial_header.add(col);
                 }else if(this.existsColumn(selTable.getName(), col) == 2){
                     throw new ConstrainException(String.format("Column %s is ambiguous.", col));
                 }
             }
-//            System.out.println(String.format("Partial header: %s", partial_header));
+            System.out.println(String.format("Partial header: %s", partial_header));
             
             LinkedList<Map<String, Object>> partial_result = new LinkedList<>();
             //Leemos del archivo
             ICsvMapReader mapReader;
             try {
-                MetaTable currTable = getCurrentTable();
-                mapReader = new CsvMapReader(new FileReader(currTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
+                mapReader = new CsvMapReader(new FileReader(selTable.physicalLocation()), CsvPreference.STANDARD_PREFERENCE);
                 
                 // the header columns are used as the keys to the Map
                 final String[] header = mapReader.getHeader(true);
-                final CellProcessor[] processors =  new CellProcessor[currTable.getColumns().size()];
+                final CellProcessor[] processors =  new CellProcessor[selTable.getColumns().size()];
                 Map<String, Object> rowMap;
                 //Mientras haya que leer
                 while( (rowMap = mapReader.read(header, processors)) != null ) {
-//                        System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
-//                                mapReader.getRowNumber(), rowMap));
+                        System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
+                                mapReader.getRowNumber(), rowMap));
                         //Preparamos objeto como lo espera el evalWhere
                         Map<String, Map<String, Object>> data = new HashMap<>();
-                        data.put(currTable.getName(), rowMap);
+                        data.put(selTable.getName(), rowMap);
                         //Si se cumple con el where
                         if(validation == null || this.evalWhere(validation, data)){
                             Map<String, Object> selMap = new HashMap<>();
-//                            System.out.println(String.format("\nFull: %s", rowMap));
+                            System.out.println(String.format("\nFull: %s", rowMap));
                             for(String fh : header){
                                 if(partial_header.contains(fh)){
                                     selMap.put(fh, rowMap.get(fh));
@@ -731,7 +730,7 @@ public class DMLManager {
                         }
                 }
                 mapReader.close();
-//                System.out.println(String.format("Partial: %s", partial_result));
+                System.out.println(String.format("Partial: %s", partial_result));
                 partial_results.add(partial_result);
 
             }
@@ -740,18 +739,23 @@ public class DMLManager {
             }
         
         }
+        System.out.println(String.format("Partial Results: %s", partial_results));
+        
         LinkedList<Map<String, Object>> result = new LinkedList<>();
-        result.addAll(partial_results.get(0));
-        if(partial_results.size() > 1){
+        if(partial_results.size() == 1){
+            result = partial_results.get(0);
+        }else {
             for(int i = 0; i < partial_results.get(0).size(); i++){
                 Map<String, Object> crossedRow = new LinkedHashMap<>();
                 crossedRow.putAll(partial_results.get(0).get(i));
                 
-                for(int j = 1; j < partial_results.get(i).size(); j++){
+                for(int j = 1; j < partial_results.size(); j++){
                     for(int k = 0; k < partial_results.get(j).size(); k++){
                         crossedRow.putAll(partial_results.get(j).get(k));
+                        result.add(crossedRow);
                     }
                 }
+                
             }
         }
 
@@ -822,12 +826,16 @@ public class DMLManager {
     public static void main(String[] args){
         DB db = new DB("proyecto");
         DMLManager dbm = new DMLManager(db);
-        dbm.workWithTables("empleado_sucursal");
+        dbm.workWithTables("empleado_sucursal", "sucursal");
         
         
         List<String> cols = new LinkedList<>();
         cols.add("empleado_id");
         cols.add("sucursal_id");
+        cols.add("id");
+        cols.add("nombre");
+        cols.add("direccion");
+        
         //cols.add("id");
         
         
@@ -838,14 +846,14 @@ public class DMLManager {
         
         
         try {
-            dbm.insert(vals, cols);
+            //dbm.insert(vals, cols);
           //  vals.set(0, "13");
            // dbm.insert(vals, cols);
             //dbm.update(vals, cols, "{nombre}==\'Pedro\'");
             //dbm.delete("{MMM.t} < 3");
             //dbm.update(cols, vals, "{a} > 2");
             
-            //dbm.select(cols, null, null, 0);
+            dbm.select(cols, null, null, 0);
         } catch (ConstrainException ex) {
             Logger.getLogger(DMLManager.class.getName()).log(Level.SEVERE, null, ex);
         }
