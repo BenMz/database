@@ -684,21 +684,16 @@ public class DMLManager {
      */
     public List<Map<String, Object>> select(List<String> columns, String validation, String orderBy, int orderIn) throws ConstrainException{
         LinkedList<LinkedList<Map<String, Object>>> partial_results = new LinkedList<>();
-        System.out.println(String.format("SELECT: %s", this.currTables.keySet()));
         for(MetaTable selTable : this.currTables.values()){
-//            System.out.println("Select");
-            System.out.println("\n\n>>>TABLE "+selTable.getName());
             //Juntamos header para lectura parcial
             List<String> partial_header  = new LinkedList<>();
             for(String col : columns){
                 if(this.existsColumn(selTable.getName(), col) == 1){
-//                    System.out.println(col);
                     partial_header.add(col);
                 }else if(this.existsColumn(selTable.getName(), col) == 2){
                     throw new ConstrainException(String.format("Column %s is ambiguous.", col));
                 }
             }
-            System.out.println(String.format("Partial header: %s", partial_header));
             
             LinkedList<Map<String, Object>> partial_result = new LinkedList<>();
             //Leemos del archivo
@@ -712,15 +707,12 @@ public class DMLManager {
                 Map<String, Object> rowMap;
                 //Mientras haya que leer
                 while( (rowMap = mapReader.read(header, processors)) != null ) {
-                        System.out.println(String.format("lineNo=%s, rowNo=%s, customerMap=%s", mapReader.getLineNumber(),
-                                mapReader.getRowNumber(), rowMap));
                         //Preparamos objeto como lo espera el evalWhere
                         Map<String, Map<String, Object>> data = new HashMap<>();
                         data.put(selTable.getName(), rowMap);
                         //Si se cumple con el where
                         if(validation == null || this.evalWhere(validation, data)){
                             Map<String, Object> selMap = new HashMap<>();
-                            System.out.println(String.format("\nFull: %s", rowMap));
                             for(String fh : header){
                                 if(partial_header.contains(fh)){
                                     selMap.put(fh, rowMap.get(fh));
@@ -730,7 +722,6 @@ public class DMLManager {
                         }
                 }
                 mapReader.close();
-                System.out.println(String.format("Partial: %s", partial_result));
                 partial_results.add(partial_result);
 
             }
@@ -739,7 +730,6 @@ public class DMLManager {
             }
         
         }
-        System.out.println(String.format("Partial Results: %s", partial_results));
         
         LinkedList<Map<String, Object>> result = new LinkedList<>();
         if(partial_results.size() == 1){
